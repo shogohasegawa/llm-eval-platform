@@ -4,6 +4,7 @@ from pathlib import Path
 import json
 import litellm
 from litellm import acompletion, Router
+import os
 import logging
 import pandas as pd
 from tqdm import tqdm
@@ -24,7 +25,8 @@ from app.utils.litellm_helper import (
     format_litellm_model_name,
     get_provider_options,
     get_router,
-    init_router_from_db
+    init_router_from_db,
+    parse_model_name
 )
 
 # 設定の取得
@@ -41,8 +43,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# 評価メトリクスの関数マッピングを動的に取得
-METRICS_FUNC_MAP = get_metrics_functions()
+# 評価メトリクスの関数マッピングは実行時に取得するためグローバルでは定義しない
+# (get_metrics_functions は parameters を引数に取るようになったため)
 
 # LiteLLM呼び出しの例外定義
 class LiteLLMAPIError(Exception):
@@ -191,6 +193,20 @@ async def call_model_with_retry(
             request_params["base_url"] = provider_options["base_url"]
 
     try:
+        # デバッグ用：リクエストパラメータをログに記録
+        safe_params = request_params.copy()
+        if "api_key" in safe_params:
+            api_key = safe_params["api_key"]
+            # APIキーの実際の値をログに記録（これは一時的なデバッグ用、後で削除する）
+            logger.error(f"EVALUATION USING API KEY: {api_key} (type: {type(api_key)})")
+            if api_key.startswith("sk-your"):
+                logger.error(f"EVAL: デモキー検出! APIキーはデモキー（'sk-your'で始まる）です: {api_key}")
+            # マスクしたキーをログに記録
+            if len(api_key) > 7:
+                safe_params["api_key"] = f"{api_key[:4]}...{api_key[-4:]}"
+            
+        logger.info(f"Calling model with params: {safe_params}")
+        
         # カスタムタイムアウト設定でAPIを呼び出し
         response = await asyncio.wait_for(
             acompletion(**request_params),
@@ -295,7 +311,7 @@ async def call_model_with_router(
 
     Args:
         messages: メッセージのリスト
-        model_alias: モデルのエイリアス
+        model_alias: モデルのエイリアス (provider/model形式)
         max_tokens: 最大トークン数
         temperature: 温度
         additional_params: 追加パラメータ
@@ -313,41 +329,177 @@ async def call_model_with_router(
     if not router:
         raise ModelNotAvailableError("Router not initialized")
 
-    # リクエストパラメータの設定
-    request_params = {
-        "model": model_alias,  # エイリアスまたはモデル名
-        "messages": messages,
-        "max_tokens": max_tokens,
-        "temperature": temperature,
-    }
-
-    # 追加パラメータの適用
-    if additional_params:
-        request_params.update(additional_params)
-
+    # providerとmodel名を抽出
+    provider, model = parse_model_name(model_alias)
+    
+    # モデルごとに適切な設定を取得
     try:
-        # Routerを使用してAPI呼び出し
-        response = await router.acompletion(**request_params)
-
-        # 使用されたモデル情報を取得
-        model_info = response.get("model_info", {})
-
+        # モデル定義から設定を取得
+        api_key = None
+        base_url = None
+        
+        # ルーターのモデルリストからAPIキーとエンドポイントを探す
+        for model_config in router.model_list:
+            if model_config.get("model_name") == model_alias:
+                api_key = model_config.get("litellm_params", {}).get("api_key")
+                base_url = model_config.get("litellm_params", {}).get("base_url")
+                break
+        
+        if not api_key:
+            logger.warning(f"APIキーが見つかりません: {model_alias}")
+            
+        # パラメータ設定
+        response_params = {
+            "model": model,  # プロバイダなしのモデル名
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        
+        # APIキーを設定
+        if api_key:
+            response_params["api_key"] = api_key
+            
+        # base_urlを設定（Ollamaは必須、その他は明示的に指定がある場合のみ）
+        if provider.lower() == "ollama":
+            # Ollamaの場合はエンドポイント必須
+            if base_url:
+                logger.info(f"Ollamaのエンドポイント設定: {base_url}")
+                response_params["base_url"] = base_url
+            else:
+                logger.warning(f"Ollamaはエンドポイント指定が必須です")
+        elif base_url:
+            # その他のプロバイダは明示的に指定がある場合のみ設定
+            logger.info(f"カスタムエンドポイント設定: {base_url}")
+            response_params["base_url"] = base_url
+        else:
+            # エンドポイント設定なし - LiteLLMのデフォルト動作に任せる
+            logger.info(f"{provider}/{model}はデフォルトエンドポイントを使用")
+            
+        # 追加パラメータの適用
+        if additional_params:
+            response_params.update(additional_params)
+            
+        # 安全にログ出力（APIキーを隠す）
+        safe_params = response_params.copy()
+        if "api_key" in safe_params:
+            api_key = safe_params["api_key"]
+            if len(api_key) > 7:
+                safe_params["api_key"] = f"{api_key[:4]}...{api_key[-4:]}"
+                
+        logger.info(f"LLM呼び出しパラメータ: {safe_params}")
+        
+        # litellm.acompletionを使用してLLMを呼び出し
+        logger.info(f"LiteLLMを使用してLLM呼び出し: {provider}/{model}")
+        
+        # モデル形式の調整: Ollamaの場合のみprovider/model形式を使用
+        if provider.lower() == "ollama":
+            # Ollamaの場合は provider/model 形式が必要
+            response_params["model"] = f"{provider}/{model}"
+            logger.info(f"Ollamaのためモデル名をprovider/model形式に調整: {response_params['model']}")
+        else:
+            # その他のプロバイダの場合はモデル名のみを使用
+            response_params["model"] = model
+            logger.info(f"モデル名をモデル名のみに調整: {response_params['model']}")
+        
+        # プロバイダを明示的に設定
+        response_params["provider"] = provider
+        
+        try:
+            # 非同期で呼び出し
+            response = await litellm.acompletion(**response_params)
+            logger.info(f"LLM呼び出し成功: レスポンスID={response.id}")
+        except Exception as e:
+            logger.error(f"LLM呼び出しエラー: {e}")
+            
+            # エラーの詳細情報を取得
+            error_details = str(e)
+            
+            # APIキーをマスク
+            if "api_key" in error_details and api_key:
+                masked_key = f"{api_key[:4]}...{api_key[-4:]}" if len(api_key) > 7 else "[masked]"
+                error_details = error_details.replace(api_key, masked_key)
+            
+            # 特定のエラータイプに応じた詳細情報
+            if "404 Not Found" in error_details:
+                # URLエラーの可能性
+                logger.error(f"URLエラー検出: 404 Not Found")
+                logger.error(f"設定されたbase_url: {response_params.get('base_url')}")
+                
+                # プロバイダ別のアドバイス
+                logger.error(f"プロバイダの正しいエンドポイントを設定してください:")
+                logger.error(f"- OpenAIの場合は、エンドポイントが 'https://api.openai.com/v1' であるか確認してください")
+                logger.error(f"- Anthropicの場合は、エンドポイントが 'https://api.anthropic.com' であるか確認してください")
+                logger.error(f"- Ollamaの場合は、正しいホストとポート (例: 'http://localhost:11434') を指定してください")
+            
+            logger.error(f"詳細エラー: {error_details}")
+            raise
+        
         return {
             "response": response,
-            "provider": model_info.get("provider", "unknown"),
-            "model": model_info.get("model", model_alias)
+            "provider": provider,
+            "model": model
         }
-    except asyncio.TimeoutError:
-        logger.warning(f"Timeout calling model via router: {model_alias}")
-        raise LiteLLMTimeoutError(f"Timeout calling model via router: {model_alias}")
+    
     except Exception as e:
-        error_message = str(e).lower()
-        if "rate limit" in error_message or "too many requests" in error_message:
-            logger.warning(f"Rate limit error: {e}")
-            raise LiteLLMRateLimitError(f"Rate limit error: {str(e)}")
+        # 例外発生時は通常のルーター処理にフォールバック
+        logger.warning(f"Error when using direct model access, falling back to router: {e}")
+        # モデル名の調整（Ollamaの場合のみprovider/model形式）
+        adjusted_model = None
+        if provider.lower() == "ollama":
+            # Ollamaはprovider/model形式を保持
+            adjusted_model = model_alias
         else:
-            logger.error(f"Error calling model via router: {e}")
-            raise LiteLLMAPIError(f"API error: {str(e)}")
+            # その他のプロバイダはmodel名のみを使用
+            adjusted_model = model
+        
+        logger.info(f"ルーター用にモデル名を調整: {model_alias} -> {adjusted_model}")
+        
+        # リクエストパラメータの設定
+        request_params = {
+            "model": adjusted_model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+
+        # 追加パラメータの適用
+        if additional_params:
+            request_params.update(additional_params)
+            
+        # リクエストパラメータのデバッグログ（APIキーを隠す）
+        safe_params = request_params.copy()
+        if 'api_key' in safe_params:
+            api_key = safe_params['api_key']
+            if len(api_key) > 7:
+                safe_params['api_key'] = f"{api_key[:4]}...{api_key[-4:]}"
+        logger.info(f"ルーター呼び出しパラメータ: {safe_params}")
+
+        try:
+            # Routerを使用してAPI呼び出し
+            logger.info(f"RouterでLLM呼び出し: {model_alias}")
+            response = await router.acompletion(**request_params)
+            logger.info(f"ルーター呼び出し成功: {model_alias}")
+
+            # 使用されたモデル情報を取得
+            model_info = response.get("model_info", {})
+
+            return {
+                "response": response,
+                "provider": model_info.get("provider", provider),
+                "model": model_info.get("model", model)
+            }
+        except asyncio.TimeoutError:
+            logger.warning(f"Timeout calling model via router: {model_alias}")
+            raise LiteLLMTimeoutError(f"Timeout calling model via router: {model_alias}")
+        except Exception as e:
+            error_message = str(e).lower()
+            if "rate limit" in error_message or "too many requests" in error_message:
+                logger.warning(f"Rate limit error: {e}")
+                raise LiteLLMRateLimitError(f"Rate limit error: {str(e)}")
+            else:
+                logger.error(f"Error calling model via router: {e}")
+                raise LiteLLMAPIError(f"API error: {str(e)}")
 
 async def call_model_with_litellm(
     messages: List[Dict[str, str]],
@@ -532,7 +684,25 @@ async def run_evaluation(
     with dataset_path.open(encoding="utf-8") as f:
         dataset = json.load(f)
 
-    metrics = dataset["metrics"]
+    # メトリクス定義の取得（旧形式と新形式の両方をサポート）
+    metrics_from_dataset = dataset["metrics"]
+    
+    # メトリクス名とパラメータのマッピングを作成
+    metrics = []
+    metrics_parameters = {}
+    
+    # 旧形式（文字列のリスト）と新形式（辞書のリスト）の両方をサポート
+    for metric_item in metrics_from_dataset:
+        if isinstance(metric_item, str):
+            # 旧形式: 文字列のみ
+            metrics.append(metric_item)
+        elif isinstance(metric_item, dict) and "name" in metric_item:
+            # 新形式: 名前とパラメータを持つ辞書
+            metric_name = metric_item["name"]
+            metrics.append(metric_name)
+            if "parameters" in metric_item and metric_item["parameters"]:
+                metrics_parameters[metric_name] = metric_item["parameters"]
+    
     instruction = dataset["instruction"]
     output_length = dataset["output_length"]
     samples = dataset["samples"][:num_samples]
@@ -571,9 +741,12 @@ async def run_evaluation(
         if error_count > 0:
             logger.warning(f"{error_count} out of {len(shot_results)} samples failed with errors")
 
+        # パラメータを使用してメトリクス関数を取得
+        metrics_func_map = get_metrics_functions(metrics_parameters)
+        
         for metric_name in metrics:
-            if metric_name in METRICS_FUNC_MAP:
-                metric_func = METRICS_FUNC_MAP[metric_name]
+            if metric_name in metrics_func_map:
+                metric_func = metrics_func_map[metric_name]
                 scores = [
                     metric_func(result["processed_output"], result["expected_output"])
                     for result in shot_results if not result["processed_output"].startswith("ERROR:")
@@ -583,6 +756,10 @@ async def run_evaluation(
                     all_results[f"{dataset_name}_{shot}shot_{metric_name}"] = avg_score
                     # エラー率も記録
                     all_results[f"{dataset_name}_{shot}shot_{metric_name}_error_rate"] = error_count / len(shot_results)
+                    
+                    # パラメータ情報も記録（あれば）
+                    if metric_name in metrics_parameters:
+                        all_results[f"{dataset_name}_{shot}shot_{metric_name}_parameters"] = metrics_parameters[metric_name]
                 else:
                     all_results[f"{dataset_name}_{shot}shot_{metric_name}"] = 0
                     all_results[f"{dataset_name}_{shot}shot_{metric_name}_error_rate"] = 1.0
