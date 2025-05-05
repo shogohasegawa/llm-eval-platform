@@ -98,15 +98,61 @@ class AsyncEvaluationResponse(BaseModel):
     message: str
 
 
+class MetricParameterInfo(BaseModel):
+    """評価指標パラメータ情報モデル"""
+    type: str                      # パラメータの型（string, number, boolean, etc.）
+    description: Optional[str] = None  # パラメータの説明
+    default: Optional[Any] = None  # デフォルト値
+    required: bool = False        # 必須パラメータかどうか
+    enum: Optional[List[Any]] = None  # 列挙型の場合、取りうる値のリスト
+
+
 class MetricInfo(BaseModel):
     """評価指標情報モデル"""
     name: str                     # 評価指標の名前
     description: Optional[str] = None  # 評価指標の説明（あれば）
+    parameters: Optional[Dict[str, MetricParameterInfo]] = None  # パラメータ定義
+    is_higher_better: bool = True  # 値が高いほど良いか
 
 
 class MetricsListResponse(BaseModel):
     """評価指標一覧レスポンスモデル"""
     metrics: List[MetricInfo]     # 利用可能な評価指標一覧
+
+
+class MetricBase(BaseModel):
+    """メトリクス基本モデル"""
+    name: str                      # メトリクス名
+    type: str                      # メトリクスタイプ
+    description: Optional[str] = None  # 説明（オプション）
+    is_higher_better: bool = True  # 値が高いほど良いか
+    parameters: Optional[Dict[str, Any]] = None  # パラメータ
+
+
+class MetricCreate(MetricBase):
+    """メトリクス作成モデル"""
+    pass
+
+
+class MetricUpdate(BaseModel):
+    """メトリクス更新モデル"""
+    name: Optional[str] = None
+    type: Optional[str] = None
+    description: Optional[str] = None
+    is_higher_better: Optional[bool] = None
+    parameters: Optional[Dict[str, Any]] = None
+
+
+class MetricResponse(MetricBase):
+    """メトリクスレスポンスモデル"""
+    id: str                      # メトリクスID
+    created_at: datetime
+    updated_at: datetime
+
+
+class MetricListResponse(BaseModel):
+    """メトリクス一覧レスポンスモデル"""
+    metrics: List[MetricResponse]
 
 
 # データセット関連モデル

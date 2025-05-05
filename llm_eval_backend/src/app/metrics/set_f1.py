@@ -10,14 +10,15 @@ class SetF1(BaseMetric):
     集合ベースのF1スコア評価指標
     """
 
-    def __init__(self, delimiter: str = "\n"):
+    def __init__(self, parameters=None, delimiter: str = "\n"):
         """
         初期化メソッド
 
         Args:
+            parameters: 評価指標のパラメータ (オプション)
             delimiter: 項目の区切り文字
         """
-        super().__init__(name="set_f1")
+        super().__init__(name="set_f1", parameters=parameters)
         self.delimiter = delimiter
 
     def calculate(self, hypothesis: str, reference: str) -> float:

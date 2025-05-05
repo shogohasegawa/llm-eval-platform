@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from app.api.api_schemas import Provider, ProviderCreate, ProviderUpdate
 from app.utils.db.providers import get_provider_repository
 
-router = APIRouter(prefix="/api/providers", tags=["providers"])
+router = APIRouter(prefix="/providers", tags=["providers"])
 
 
 @router.post("", response_model=Provider, status_code=status.HTTP_201_CREATED)

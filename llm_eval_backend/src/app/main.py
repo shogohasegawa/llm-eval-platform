@@ -1,15 +1,26 @@
 import os
 import logging
-from fastapi import FastAPI, Request
+import time
+import datetime
+from zoneinfo import ZoneInfo
+from fastapi import FastAPI, Request, Response
+import httpx
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 from fastapi.openapi.utils import get_openapi
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse, StreamingResponse, RedirectResponse
 
 from app.api import api_router
 from app.utils.db import get_db
 from app.utils.app_logging import setup_logging
+
+# タイムゾーンをJST（日本標準時）に設定
+os.environ['TZ'] = 'Asia/Tokyo'
+time.tzset()  # システムのタイムゾーン設定を反映
+
+# デフォルトのタイムゾーンを設定
+DEFAULT_TIMEZONE = ZoneInfo('Asia/Tokyo')
 
 # ロギングの設定
 log_level = os.environ.get("LLMEVAL_LOG_LEVEL", "INFO")
@@ -30,8 +41,8 @@ app.add_middleware(
 # データベース接続の初期化
 db = get_db()
 
-# APIルーターを追加
-app.include_router(api_router, prefix="/api")
+# APIルーターを追加（バージョン付きのRESTful API標準形式）
+app.include_router(api_router, prefix="/api/v1")
 
 # リクエスト・レスポンスのロギング
 @app.middleware("http")
@@ -64,12 +75,30 @@ async def startup_event():
     # アプリケーション起動時に実行する処理
     logger.info("アプリケーション起動中...")
     
-    # LiteLLMキャッシュの初期化
-    from app.utils.litellm_helper import init_litellm_cache
+    # タイムゾーン設定の確認と表示
+    current_time = datetime.datetime.now()
+    current_time_utc = datetime.datetime.now(datetime.UTC)
+    current_time_jst = datetime.datetime.now(ZoneInfo('Asia/Tokyo'))
+    
+    logger.info(f"システム時間: {current_time}")
+    logger.info(f"UTC時間: {current_time_utc}")
+    logger.info(f"JST時間: {current_time_jst}")
+    logger.info(f"現在のタイムゾーン設定: {time.tzname}")
+    
+    # LLM 設定に関する情報を表示
+    logger.info("=== LLM 設定ポリシー ===")
+    logger.info("環境変数からの設定読み込みは無効化されています")
+    logger.info("APIキーとエンドポイントはプロバイダ設定またはモデル設定から取得されます")
+    logger.info("設定の優先順位: 1. モデル設定, 2. プロバイダ設定")
+    logger.info("===============================")
+    
+    # LiteLLMキャッシュとルーターの初期化
+    from app.utils.litellm_helper import init_litellm_cache, init_router_from_db
+    
+    # キャッシュ初期化
     init_litellm_cache()
     
-    # LiteLLM Routerの初期化
-    from app.utils.litellm_helper import init_router_from_db
+    # ルーター初期化
     logger.info("LiteLLM Routerを初期化中...")
     init_router_from_db()
     logger.info("LiteLLM Router初期化完了")
@@ -92,6 +121,644 @@ async def shutdown_event():
 async def root():
     logger.debug("ルートエンドポイントへのアクセス")
     return {"message": "LLM Evaluation Platform API"}
+
+# MLflow UI をiframeで表示するページ
+# MLflowページの任意のパスへのアクセスをサポートするためのリダイレクトハンドラー
+@app.get("/mlflow/{path:path}")
+async def mlflow_redirect(path: str):
+    return RedirectResponse(url=f"/proxy-mlflow/{path}")
+
+@app.get("/mlflow-ui", response_class=HTMLResponse)
+async def mlflow_ui():
+    html_content = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>MLflow UI - LLM Evaluation Platform</title>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+            body, html {
+                margin: 0;
+                padding: 0;
+                height: 100%;
+                overflow: hidden;
+                font-family: Arial, sans-serif;
+            }
+            .container {
+                width: 100%;
+                height: 100%;
+                display: flex;
+                flex-direction: column;
+            }
+            .header {
+                background-color: #4CAF50;
+                color: white;
+                padding: 10px 20px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                z-index: 10;
+            }
+            .header h1 {
+                margin: 0;
+                font-size: 20px;
+            }
+            iframe {
+                flex-grow: 1;
+                border: none;
+                width: 100%;
+                height: calc(100% - 60px);
+            }
+            .loader {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                height: calc(100% - 60px);
+                background-color: #f5f5f5;
+            }
+            .spinner {
+                border: 4px solid rgba(0, 0, 0, 0.1);
+                width: 36px;
+                height: 36px;
+                border-radius: 50%;
+                border-left-color: #4CAF50;
+                animation: spin 1s linear infinite;
+                margin-bottom: 16px;
+            }
+            @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
+            .fallback {
+                padding: 40px 20px;
+                text-align: center;
+                background-color: #f9f9f9;
+                border-radius: 8px;
+                margin: 40px auto;
+                max-width: 600px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                display: none;
+            }
+            .button {
+                background-color: white;
+                color: #4CAF50;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 4px;
+                cursor: pointer;
+                font-weight: bold;
+                text-decoration: none;
+                display: inline-block;
+                transition: all 0.2s ease;
+            }
+            .button:hover {
+                background-color: #f0f0f0;
+                transform: translateY(-2px);
+                box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            }
+            .direct-link {
+                margin-top: 16px;
+                display: inline-block;
+                color: #666;
+                text-decoration: underline;
+            }
+            .error-message {
+                color: #d32f2f;
+                margin-bottom: 24px;
+                font-weight: bold;
+            }
+            .note {
+                font-size: 14px;
+                color: #666;
+                margin-top: 16px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>MLflow メトリクスダッシュボード</h1>
+                <a href="/" class="button">メインに戻る</a>
+            </div>
+            
+            <!-- ローディング表示 -->
+            <div id="loader" class="loader">
+                <div class="spinner"></div>
+                <p>MLflow UIを読み込み中...</p>
+            </div>
+            
+            <!-- iframeでMLflowを表示 -->
+            <iframe 
+                src="/proxy-mlflow/" 
+                id="mlflow-frame"
+                style="display: none;"
+                onload="frameLoaded()"
+                onerror="frameError()">
+            </iframe>
+            
+            <!-- フォールバック表示 -->
+            <div class="fallback" id="fallback">
+                <h2>MLflow UIの読み込みに失敗しました</h2>
+                <p class="error-message" id="error-message">403 Forbidden エラーが発生しました</p>
+                <p>以下のいずれかの方法でMLflowにアクセスしてください:</p>
+                <div style="display: flex; gap: 10px; justify-content: center; margin-bottom: 20px;">
+                    <a href="/proxy-mlflow/" target="_blank" class="button">1. MLflow UIをプロキシ経由で開く</a>
+                    <a href="/proxy-mlflow/" target="_self" class="button">2. このページを再読み込み</a>
+                </div>
+                
+                <div id="debug-info" style="text-align: left; margin-top: 30px; background: #f5f5f5; padding: 15px; border-radius: 5px;">
+                    <h3>トラブルシューティング情報</h3>
+                    <p>以下の情報を確認してください:</p>
+                    <ul style="margin-bottom: 15px;">
+                        <li>MLflowサーバーのステータス: <span id="mlflow-status">確認中...</span></li>
+                        <li>プロキシ接続のステータス: <span id="proxy-status">確認中...</span></li>
+                        <li>ブラウザ情報: <span id="browser-info">取得中...</span></li>
+                    </ul>
+                    
+                    <button onclick="checkConnections()" style="background: #4CAF50; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">
+                        接続を再確認
+                    </button>
+                </div>
+                
+                <p class="note">※ MLflowサーバーが起動していることを確認してください。<br>ブラウザのCORS制限により、iframeでのアクセスがブロックされている可能性があります。</p>
+                
+                <script>
+                    // 接続テスト用関数
+                    async function checkConnections() {
+                        document.getElementById('mlflow-status').textContent = "確認中...";
+                        document.getElementById('proxy-status').textContent = "確認中...";
+                        
+                        // MLflowサーバーへのプロキシアクセスをテスト
+                        try {
+                            const directResp = await fetch('/proxy-mlflow/', {
+                                method: 'GET'
+                            });
+                            document.getElementById('mlflow-status').textContent = "接続OK (ステータス: " + directResp.status + ")";
+                        } catch (e) {
+                            document.getElementById('mlflow-status').textContent = "接続エラー: " + e.message;
+                        }
+                        
+                        // プロキシアクセスをテスト
+                        try {
+                            const proxyResp = await fetch('/proxy-mlflow/api/2.0/mlflow/experiments/list', {
+                                method: 'GET'
+                            });
+                            document.getElementById('proxy-status').textContent = 
+                                "接続OK (ステータス: " + proxyResp.status + ")";
+                        } catch (e) {
+                            document.getElementById('proxy-status').textContent = "接続エラー: " + e.message;
+                        }
+                        
+                        // ブラウザ情報を表示
+                        document.getElementById('browser-info').textContent = 
+                            navigator.userAgent;
+                    }
+                    
+                    // ページ読み込み時に接続テスト実行
+                    checkConnections();
+                </script>
+            </div>
+        </div>
+        <script>
+            let loadTimerId = null;
+            
+            function frameLoaded() {
+                console.log('MLflow frame loaded successfully');
+                // ローディング表示を非表示にする
+                document.getElementById('loader').style.display = 'none';
+                
+                // Check if we can access the iframe content
+                try {
+                    const frame = document.getElementById('mlflow-frame');
+                    frame.style.display = 'block';
+                    
+                    // Try to access iframe content - will throw if cross-origin issues
+                    const frameContent = frame.contentWindow.document;
+                    
+                    // Check if there's an error message in the iframe content
+                    const frameBody = frameContent.body.innerText;
+                    if (frameBody.includes('403 Forbidden') || 
+                        frameBody.includes('Access Denied') ||
+                        frameBody.includes('Error')) {
+                        throw new Error('エラーページが表示されています: ' + 
+                            frameBody.substring(0, 100) + '...');
+                    }
+                    
+                    // If we reach here, the iframe loaded successfully
+                    if (loadTimerId) {
+                        clearTimeout(loadTimerId);
+                        loadTimerId = null;
+                    }
+                    
+                    console.log('MLflow UI successfully loaded in iframe');
+                } catch (e) {
+                    console.error('MLflow access error after load:', e);
+                    document.getElementById('error-message').textContent = 
+                        e.message || 'アクセス拒否または接続エラー';
+                    showFallback();
+                }
+            }
+            
+            function frameError() {
+                console.error('MLflow frame failed to load (onerror event)');
+                document.getElementById('error-message').textContent = 
+                    'iframeの読み込みエラー - リソースが見つからないか、アクセスが拒否されました';
+                showFallback();
+            }
+            
+            function showFallback() {
+                document.getElementById('loader').style.display = 'none';
+                document.getElementById('mlflow-frame').style.display = 'none';
+                document.getElementById('fallback').style.display = 'block';
+                
+                // タイマーがセットされていたらクリア
+                if (loadTimerId) {
+                    clearTimeout(loadTimerId);
+                    loadTimerId = null;
+                }
+                
+                // 自動的に接続テストを実行
+                if (typeof checkConnections === 'function') {
+                    checkConnections();
+                }
+            }
+            
+            // iframeの読み込みが完了したかどうかをチェックするタイマー
+            loadTimerId = setTimeout(() => {
+                try {
+                    // Try to access the iframe content
+                    const frame = document.getElementById('mlflow-frame');
+                    if (frame.style.display === 'none') {
+                        // If the iframe is still hidden, the load event hasn't fired
+                        document.getElementById('error-message').textContent = 
+                            'タイムアウト: MLflow UIの読み込みに時間がかかっています';
+                        showFallback();
+                    }
+                } catch (e) {
+                    console.error('MLflow timeout check error:', e);
+                    showFallback();
+                }
+            }, 10000);
+            
+            // 直接アクセスするためのURLをホスト名に基づいて設定
+            window.addEventListener('DOMContentLoaded', () => {
+                // プロキシリンクで置き換える (直接アクセスは403エラーになるため)
+                const directLinks = document.querySelectorAll('a[href^="http://"]');
+                
+                directLinks.forEach(link => {
+                    if (link.href.includes(':5000')) {
+                        link.href = `/proxy-mlflow`;
+                    }
+                });
+            });
+        </script>
+    </body>
+    </html>
+    """
+    return html_content
+
+# MLflow UIへのプロキシエンドポイント
+@app.get("/proxy-mlflow/{path:path}")
+@app.post("/proxy-mlflow/{path:path}")
+@app.put("/proxy-mlflow/{path:path}")
+@app.delete("/proxy-mlflow/{path:path}")
+@app.patch("/proxy-mlflow/{path:path}")
+@app.options("/proxy-mlflow/{path:path}")
+async def proxy_mlflow(path: str, request: Request):
+    # MLflowサービスへの内部URL（Docker Composeネットワーク内）
+    target_url = f"http://mlflow:5000/{path}"
+    
+    # クエリパラメータを転送
+    if request.query_params:
+        target_url += "?" + str(request.query_params)
+    
+    logger.debug(f"MLflowへのプロキシリクエスト: {request.method} {target_url}")
+    
+    try:
+        # リクエストヘッダーをコピー（一部のヘッダーは除外）
+        headers = {}
+        for name, value in request.headers.items():
+            if name.lower() not in ("host", "content-length"):
+                headers[name] = value
+        
+        # CORSヘッダーを追加
+        headers["Access-Control-Allow-Origin"] = "*"
+        headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+        headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        
+        # OPTIONSリクエストの場合は直接レスポンスを返す
+        if request.method == "OPTIONS":
+            return Response(
+                content=b"",
+                status_code=200,
+                headers=headers
+            )
+        
+        # リクエストボディを取得
+        body = await request.body() if request.method != "GET" else None
+        
+        # リクエストメソッドに応じたHTTPリクエストを送信
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            if request.method == "GET":
+                response = await client.get(target_url, headers=headers, follow_redirects=True)
+            elif request.method == "POST":
+                response = await client.post(target_url, headers=headers, content=body, follow_redirects=True)
+            elif request.method == "PUT":
+                response = await client.put(target_url, headers=headers, content=body, follow_redirects=True)
+            elif request.method == "DELETE":
+                response = await client.delete(target_url, headers=headers, follow_redirects=True)
+            elif request.method == "PATCH":
+                response = await client.patch(target_url, headers=headers, content=body, follow_redirects=True)
+            else:
+                return JSONResponse(
+                    status_code=405,
+                    content={"detail": f"Method {request.method} not allowed"}
+                )
+            
+            # レスポンスヘッダーから不要なものを除外
+            headers_to_forward = dict(response.headers)
+            headers_to_remove = ["content-encoding", "content-length", "transfer-encoding", "connection"]
+            for header in headers_to_remove:
+                if header in headers_to_forward:
+                    del headers_to_forward[header]
+            
+            # CORSヘッダーを追加
+            headers_to_forward["Access-Control-Allow-Origin"] = "*"
+            headers_to_forward["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+            headers_to_forward["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+            
+            # コンテンツタイプのチェック
+            content_type = response.headers.get("content-type", "")
+            content = response.content
+            
+            # HTMLの場合、相対パスを絶対パスに変換する
+            if content_type.startswith("text/html"):
+                content_text = content.decode("utf-8")
+                
+                # 相対パスを '/proxy-mlflow/' で始まる絶対パスに変換
+                content_text = content_text.replace('href="./static-files/', 'href="/proxy-mlflow/static-files/')
+                content_text = content_text.replace('src="static-files/', 'src="/proxy-mlflow/static-files/')
+                content_text = content_text.replace('src="./static-files/', 'src="/proxy-mlflow/static-files/')
+                content_text = content_text.replace('href="api/', 'href="/proxy-mlflow/api/')
+                content_text = content_text.replace('href="#/', 'href="/proxy-mlflow#/')
+                
+                # 絶対パスのMLflowへの参照をプロキシに変換
+                content_text = content_text.replace('http://localhost:5000', '/proxy-mlflow')
+                content_text = content_text.replace('"http://mlflow:5000', '"/proxy-mlflow')
+                content_text = content_text.replace("'http://mlflow:5000", "'/proxy-mlflow")
+                
+                content = content_text.encode("utf-8")
+            
+            # CSSの場合も、相対パスを絶対パスに変換
+            elif content_type.startswith("text/css"):
+                try:
+                    content_text = content.decode("utf-8")
+                    content_text = content_text.replace('url(../', 'url(/proxy-mlflow/static-files/')
+                    content_text = content_text.replace('url("../', 'url("/proxy-mlflow/static-files/')
+                    content_text = content_text.replace("url('../", "url('/proxy-mlflow/static-files/")
+                    content = content_text.encode("utf-8")
+                except:
+                    # デコードに失敗した場合は元のコンテンツを使用
+                    pass
+            
+            # JavaScriptの場合も、URLを書き換え
+            elif content_type.startswith("application/javascript") or content_type.startswith("text/javascript"):
+                try:
+                    content_text = content.decode("utf-8")
+                    content_text = content_text.replace('http://localhost:5000', '/proxy-mlflow')
+                    content_text = content_text.replace('"http://mlflow:5000', '"/proxy-mlflow')
+                    content_text = content_text.replace("'http://mlflow:5000", "'/proxy-mlflow")
+                    content = content_text.encode("utf-8")
+                except:
+                    # デコードに失敗した場合は元のコンテンツを使用
+                    pass
+            
+            # JSONの場合も、URLを書き換え
+            elif content_type.startswith("application/json"):
+                try:
+                    content_text = content.decode("utf-8")
+                    content_text = content_text.replace('http://localhost:5000', '/proxy-mlflow')
+                    content_text = content_text.replace('http://mlflow:5000', '/proxy-mlflow')
+                    content = content_text.encode("utf-8")
+                except:
+                    # デコードに失敗した場合は元のコンテンツを使用
+                    pass
+            
+            # レスポンスの内容を返す
+            return Response(
+                content=content,
+                status_code=response.status_code,
+                headers=headers_to_forward,
+                media_type=content_type or "text/html"
+            )
+    except httpx.TimeoutException:
+        logger.error(f"MLflowへのリクエストがタイムアウトしました: {target_url}")
+        return JSONResponse(
+            status_code=504,
+            content={"detail": "MLflowへのリクエストがタイムアウトしました"}
+        )
+    except Exception as e:
+        logger.error(f"MLflowへのプロキシ中にエラーが発生しました: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"detail": f"MLflowへのアクセスに失敗しました: {str(e)}"}
+        )
+
+# ルートパスへのアクセスもプロキシ
+@app.get("/proxy-mlflow", response_class=Response)
+@app.post("/proxy-mlflow", response_class=Response)
+@app.put("/proxy-mlflow", response_class=Response)
+@app.delete("/proxy-mlflow", response_class=Response)
+@app.patch("/proxy-mlflow", response_class=Response)
+@app.options("/proxy-mlflow", response_class=Response)
+async def proxy_mlflow_root(request: Request):
+    logger.info(f"MLflowルートパスへのアクセス: {request.method}")
+    return await proxy_mlflow("", request)
+
+# 静的ファイル用のプロキシエンドポイント（CSSやJSなど）
+@app.get("/proxy-mlflow/static-files/{file_path:path}")
+@app.options("/proxy-mlflow/static-files/{file_path:path}")
+async def proxy_mlflow_static(file_path: str, request: Request):
+    # 静的ファイルへのパスを構築
+    target_url = f"http://mlflow:5000/static-files/{file_path}"
+    logger.debug(f"MLflow静的ファイルへのプロキシリクエスト: {request.method} {target_url}")
+    
+    # OPTIONSリクエストの場合は直接レスポンスを返す
+    if request.method == "OPTIONS":
+        headers = {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+            "Cache-Control": "public, max-age=86400"
+        }
+        return Response(
+            content=b"",
+            status_code=200,
+            headers=headers
+        )
+    
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(target_url, follow_redirects=True)
+            
+            headers_to_forward = dict(response.headers)
+            headers_to_remove = ["content-encoding", "content-length", "transfer-encoding", "connection"]
+            for header in headers_to_remove:
+                if header in headers_to_forward:
+                    del headers_to_forward[header]
+            
+            # キャッシュヘッダーを追加
+            headers_to_forward["Cache-Control"] = "public, max-age=86400"
+            headers_to_forward["Access-Control-Allow-Origin"] = "*"
+            
+            # 静的ファイルの内容を取得
+            content = response.content
+            content_type = response.headers.get("content-type", "application/octet-stream")
+            
+            # JavaScriptや他のテキストベースのファイルでURLの書き換えを行う
+            if content_type.startswith("text/") or content_type.startswith("application/javascript"):
+                try:
+                    content_text = content.decode("utf-8")
+                    # MLflowへの絶対URLをプロキシURLに変換
+                    content_text = content_text.replace('http://localhost:5000', '/proxy-mlflow')
+                    content_text = content_text.replace('"http://mlflow:5000', '"/proxy-mlflow')
+                    content_text = content_text.replace("'http://mlflow:5000", "'/proxy-mlflow")
+                    content = content_text.encode("utf-8")
+                except:
+                    # デコードに失敗した場合は元のコンテンツを使用
+                    pass
+            
+            return Response(
+                content=content,
+                status_code=response.status_code,
+                headers=headers_to_forward,
+                media_type=content_type
+            )
+    except Exception as e:
+        logger.error(f"MLflow静的ファイルへのプロキシ中にエラーが発生しました: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": f"MLflow静的ファイルへのアクセスに失敗しました: {str(e)}"}
+        )
+
+# MLflow APIエンドポイントへのプロキシ
+@app.get("/proxy-mlflow/api/{path:path}")
+@app.post("/proxy-mlflow/api/{path:path}")
+@app.put("/proxy-mlflow/api/{path:path}")
+@app.delete("/proxy-mlflow/api/{path:path}")
+@app.patch("/proxy-mlflow/api/{path:path}")
+@app.options("/proxy-mlflow/api/{path:path}")
+async def proxy_mlflow_api(path: str, request: Request):
+    # MLflow APIへのパスを構築
+    target_url = f"http://mlflow:5000/api/{path}"
+    logger.debug(f"MLflow APIへのプロキシリクエスト: {request.method} {target_url}")
+    
+    try:
+        # リクエストヘッダーをコピー
+        headers = {}
+        for name, value in request.headers.items():
+            if name.lower() not in ("host", "content-length"):
+                headers[name] = value
+        
+        # CORSヘッダーを追加
+        headers["Access-Control-Allow-Origin"] = "*"
+        headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+        headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        
+        # OPTIONSリクエストの場合は直接レスポンスを返す
+        if request.method == "OPTIONS":
+            return Response(
+                content=b"",
+                status_code=200,
+                headers=headers
+            )
+        
+        # リクエストボディを取得
+        body = await request.body() if request.method != "GET" else None
+        
+        # リクエスト実行
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            if request.method == "GET":
+                response = await client.get(
+                    target_url, 
+                    headers=headers, 
+                    params=dict(request.query_params),
+                    follow_redirects=True
+                )
+            elif request.method == "POST":
+                response = await client.post(
+                    target_url, 
+                    headers=headers, 
+                    content=body,
+                    follow_redirects=True
+                )
+            elif request.method == "PUT":
+                response = await client.put(
+                    target_url, 
+                    headers=headers, 
+                    content=body,
+                    follow_redirects=True
+                )
+            elif request.method == "DELETE":
+                response = await client.delete(
+                    target_url, 
+                    headers=headers,
+                    follow_redirects=True
+                )
+            elif request.method == "PATCH":
+                response = await client.patch(
+                    target_url, 
+                    headers=headers, 
+                    content=body,
+                    follow_redirects=True
+                )
+            else:
+                return JSONResponse(
+                    status_code=405,
+                    content={"detail": f"Method {request.method} not allowed"}
+                )
+        
+        # レスポンスヘッダーから不要なものを除外
+        headers_to_forward = dict(response.headers)
+        headers_to_remove = ["content-encoding", "content-length", "transfer-encoding", "connection"]
+        for header in headers_to_remove:
+            if header in headers_to_forward:
+                del headers_to_forward[header]
+        
+        # CORSヘッダーを追加
+        headers_to_forward["Access-Control-Allow-Origin"] = "*"
+        headers_to_forward["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+        headers_to_forward["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        
+        # JSONレスポンスの場合、内容を確認して必要に応じて変更
+        content = response.content
+        content_type = response.headers.get("content-type", "")
+        
+        if content_type.startswith("application/json"):
+            try:
+                content_text = content.decode("utf-8")
+                content_text = content_text.replace('http://localhost:5000', '/proxy-mlflow')
+                content_text = content_text.replace('http://mlflow:5000', '/proxy-mlflow')
+                content = content_text.encode("utf-8")
+            except:
+                # パースに失敗した場合は元のコンテンツをそのまま使用
+                pass
+        
+        return Response(
+            content=content,
+            status_code=response.status_code,
+            headers=headers_to_forward,
+            media_type=content_type
+        )
+    except Exception as e:
+        logger.error(f"MLflow APIへのプロキシ中にエラーが発生しました: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"detail": f"MLflow APIへのアクセスに失敗しました: {str(e)}"}
+        )
 
 if __name__ == "__main__":
     import uvicorn

@@ -12,7 +12,7 @@ from app.utils.litellm_helper import get_provider_options
 from app.metrics import METRIC_REGISTRY
 from app.utils.job_manager import get_job_manager
 
-router = APIRouter(prefix="/api/evaluations", tags=["evaluations"])
+router = APIRouter(prefix="/evaluations", tags=["evaluations"])
 
 
 @router.get("/metrics", response_model=MetricsListResponse)
@@ -21,7 +21,7 @@ async def get_available_metrics() -> MetricsListResponse:
     利用可能な評価指標一覧を返す
 
     Returns:
-        MetricsListResponse: 評価指標名と説明のリスト
+        MetricsListResponse: 評価指標名、説明、パラメータ定義のリスト
     """
     metrics_list: List[MetricInfo] = []
     
@@ -35,10 +35,26 @@ async def get_available_metrics() -> MetricsListResponse:
         if metric_cls.__doc__:
             description = metric_cls.__doc__.strip()
         
+        # パラメータ定義を取得
+        param_defs = metric_cls.get_parameter_definitions()
+        parameters = {}
+        
+        # パラメータ定義をAPIモデルに変換
+        for param_name, param_def in param_defs.items():
+            parameters[param_name] = MetricParameterInfo(
+                type=param_def.get("type", "string"),
+                description=param_def.get("description"),
+                default=param_def.get("default"),
+                required=param_def.get("required", False),
+                enum=param_def.get("enum")
+            )
+        
         metrics_list.append(
             MetricInfo(
                 name=name,
-                description=description
+                description=description,
+                parameters=parameters if parameters else None,
+                is_higher_better=getattr(metric_instance, "is_higher_better", True)
             )
         )
     

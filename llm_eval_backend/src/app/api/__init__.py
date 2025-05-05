@@ -9,6 +9,7 @@ from app.api.endpoints.datasets import router as datasets_router
 from app.api.endpoints.evaluation import router as evaluation_router
 from app.api.endpoints.providers import router as providers_router
 from app.api.endpoints.inferences import router as inferences_router
+from app.api.endpoints.metrics import router as metrics_router
 
 # メインルーター
 api_router = APIRouter()
@@ -19,3 +20,4 @@ api_router.include_router(datasets_router)
 api_router.include_router(evaluation_router)
 api_router.include_router(providers_router)
 api_router.include_router(inferences_router)
+api_router.include_router(metrics_router)

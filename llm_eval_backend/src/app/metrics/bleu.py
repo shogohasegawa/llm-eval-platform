@@ -10,11 +10,14 @@ class BLEUScore(BaseMetric):
     BLEUスコア評価指標
     """
 
-    def __init__(self):
+    def __init__(self, parameters=None):
         """
         初期化メソッド
+        
+        Args:
+            parameters: 評価指標のパラメータ (オプション)
         """
-        super().__init__(name="bleu")
+        super().__init__(name="bleu", parameters=parameters)
         try:
             from sacrebleu import BLEU
             self.bleu = BLEU()

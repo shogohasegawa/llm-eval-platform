@@ -27,7 +27,8 @@ class Settings(BaseSettings):
     NSHOT_DATASETS_DIR: Path = Path("/external_datasets/n_shot")
 
     # APIとモデル関連
-    LITELLM_BASE_URL: str = "http://192.168.101.204:11434/api/generate"
+    # Ollamaのエンドポイントもデータベースから取得
+    # LITELLM_BASE_URL: str = "http://192.168.101.204:11434/api/generate"
     DEFAULT_MAX_TOKENS: int = 1024
     DEFAULT_TEMPERATURE: float = 0.0
     DEFAULT_TOP_P: float = 1.0
@@ -48,12 +49,10 @@ class Settings(BaseSettings):
     AUTO_DOWNLOAD_MODELS: bool = True  # モデルの自動ダウンロード設定
     MODEL_CHECK_BEFORE_CALL: bool = True  # 呼び出し前にモデルの存在をチェックするかどうか
 
-    # OpenAI設定
-    OPENAI_API_BASE: Optional[str] = None
-    OPENAI_API_KEY: Optional[str] = None
-
-    # Anthropic設定
-    ANTHROPIC_API_KEY: Optional[str] = None
+    # APIキーとエンドポイントはプロバイダ/モデル設定から取得するため環境変数は使用しない
+    # OPENAI_API_BASE: Optional[str] = None 
+    # OPENAI_API_KEY: Optional[str] = None
+    # ANTHROPIC_API_KEY: Optional[str] = None
 
     # プロバイダ設定
     ENABLED_PROVIDERS: List[str] = ["ollama", "openai", "anthropic"]
@@ -118,19 +117,8 @@ class Settings(BaseSettings):
         # 大文字小文字を区別しないようにする
         provider_name_lower = provider_name.lower()
         
-        # OpenAI設定
-        if provider_name_lower == "openai" and self.OPENAI_API_KEY:
-            provider_settings["api_key"] = self.OPENAI_API_KEY
-            if self.OPENAI_API_BASE:
-                provider_settings["base_url"] = self.OPENAI_API_BASE
-        
-        # Anthropic設定
-        elif provider_name_lower == "anthropic" and self.ANTHROPIC_API_KEY:
-            provider_settings["api_key"] = self.ANTHROPIC_API_KEY
-        
-        # Ollama設定
-        elif provider_name_lower == "ollama":
-            provider_settings["base_url"] = self.LITELLM_BASE_URL
+        # すべてのプロバイダでAPIキーとエンドポイントはデータベースから取得する
+        # それぞれのプロバイダ設定またはモデル設定にAPIキーとエンドポイントを登録してください
         
         return provider_settings
 

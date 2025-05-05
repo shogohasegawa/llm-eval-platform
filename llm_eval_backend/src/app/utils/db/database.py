@@ -131,6 +131,58 @@ class DatabaseManager:
             )
             ''')
             
+            # メトリクステーブル
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS metrics (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                type TEXT NOT NULL,
+                description TEXT,
+                is_higher_better INTEGER NOT NULL DEFAULT 1,
+                parameters TEXT, -- JSON形式で保存したパラメータ
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            ''')
+            
+            # 推論テーブル
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS inferences (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT,
+                dataset_id TEXT NOT NULL,
+                provider_id TEXT NOT NULL,
+                model_id TEXT NOT NULL,
+                status TEXT NOT NULL, -- pending, running, completed, failed
+                progress INTEGER NOT NULL DEFAULT 0,
+                metrics TEXT, -- JSON形式で保存したメトリクスデータ
+                parameters TEXT, -- JSON形式で保存したパラメータ（max_tokens, temperature, top_p, num_samplesなど）
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                completed_at TEXT,
+                error TEXT,
+                FOREIGN KEY (provider_id) REFERENCES providers (id) ON DELETE CASCADE,
+                FOREIGN KEY (model_id) REFERENCES models (id) ON DELETE CASCADE
+            )
+            ''')
+            
+            # 推論結果テーブル
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS inference_results (
+                id TEXT PRIMARY KEY,
+                inference_id TEXT NOT NULL,
+                input TEXT NOT NULL,
+                expected_output TEXT,
+                actual_output TEXT NOT NULL,
+                metrics TEXT, -- JSON形式で保存したメトリクスデータ
+                latency REAL, -- 推論にかかった時間（ミリ秒）
+                token_count INTEGER, -- トークン数
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (inference_id) REFERENCES inferences (id) ON DELETE CASCADE
+            )
+            ''')
+            
             self.conn.commit()
             logger.info("テーブルを初期化しました")
         except sqlite3.Error as e:
@@ -201,6 +253,38 @@ class DatabaseManager:
         cursor = self.execute(query, params)
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
+        
+    def encode_json(self, data: Any) -> Optional[str]:
+        """
+        データをJSON文字列にエンコードする
+        
+        Args:
+            data: エンコードするデータ
+            
+        Returns:
+            JSON文字列または None
+        """
+        if data is None:
+            return None
+        return json.dumps(data)
+        
+    def decode_json(self, json_str: Optional[str]) -> Any:
+        """
+        JSON文字列をデコードする
+        
+        Args:
+            json_str: デコードするJSON文字列
+            
+        Returns:
+            デコードされたデータまたは None
+        """
+        if not json_str:
+            return None
+        try:
+            return json.loads(json_str)
+        except json.JSONDecodeError:
+            logger.error(f"JSONデコードエラー: {json_str}")
+            return None
 
 
 # シングルトンインスタンスを取得する関数
@@ -212,3 +296,19 @@ def get_db() -> DatabaseManager:
         DatabaseManagerインスタンス
     """
     return DatabaseManager()
+
+
+# FastAPI依存関数
+async def get_database():
+    """
+    FastAPI依存性注入用のデータベースを取得する関数
+    
+    Returns:
+        DatabaseManagerインスタンス
+    """
+    db = get_db()
+    try:
+        yield db
+    finally:
+        # 明示的なクローズなどは必要なければコメントアウト可能
+        pass

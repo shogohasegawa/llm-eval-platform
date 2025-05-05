@@ -9,7 +9,8 @@ ENV PYTHONPATH=/app/src \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    TZ=Asia/Tokyo
 
 # 必要なパッケージをインストール
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -17,6 +18,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     git \
     ca-certificates \
+    tzdata \
+    && ln -sf /usr/share/zoneinfo/Asia/Tokyo /etc/localtime \
+    && echo "Asia/Tokyo" > /etc/timezone \
+    && dpkg-reconfigure -f noninteractive tzdata \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -43,8 +48,8 @@ RUN uv sync --frozen
 # アプリケーションのソースコードをコピー
 COPY src ./src
 
-# データセットのコピー(本番の際はコンテナにはコピーしない)
-COPY datasets ./datasets
+# データセットは外部からマウントするため、コンテナにはコピーしない
+# コメントアウト: COPY datasets ./datasets
 
 # ポートの公開
 EXPOSE 8000

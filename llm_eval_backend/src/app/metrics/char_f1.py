@@ -11,11 +11,14 @@ class CharF1(BaseMetric):
     文字ベースのF1スコア評価指標
     """
 
-    def __init__(self):
+    def __init__(self, parameters=None):
         """
         初期化メソッド
+        
+        Args:
+            parameters: 評価指標のパラメータ (オプション)
         """
-        super().__init__(name="char_f1")
+        super().__init__(name="char_f1", parameters=parameters)
 
     def calculate(self, hypothesis: str, reference: str) -> float:
         """

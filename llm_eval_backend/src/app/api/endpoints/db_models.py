@@ -17,7 +17,7 @@ from app.utils.litellm_helper import update_router_model
 # ロガーの設定
 logger = logging.getLogger("llmeval")
 
-router = APIRouter(prefix="/api/models", tags=["models"])
+router = APIRouter(prefix="/models", tags=["models"])
 
 
 @router.post("", response_model=Model, status_code=status.HTTP_201_CREATED)

@@ -3,7 +3,7 @@ APIスキーマモデル定義
 
 API用のリクエスト・レスポンスモデルを定義します。
 """
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Literal
 from datetime import datetime
 from pydantic import BaseModel, Field, validator
 
@@ -93,6 +93,47 @@ class Model(ModelBase):
     """モデルレスポンスモデル"""
     id: str = Field(..., description="モデルID")
     provider_name: str = Field(..., description="プロバイダー名")
+    created_at: str = Field(..., description="作成日時")
+    updated_at: str = Field(..., description="更新日時")
+
+    class Config:
+        """Pydantic設定"""
+        from_attributes = True
+        populate_by_name = True
+        allow_population_by_field_name = True
+
+
+# メトリクスモデル
+MetricType = Literal['accuracy', 'precision', 'recall', 'f1', 'bleu', 'rouge', 'exact_match', 
+                    'semantic_similarity', 'latency', 'token_count', 'custom']
+
+
+class MetricBase(CamelModel):
+    """メトリクス基本モデル"""
+    name: str = Field(..., description="メトリクス名（例：BLEU、F1-Score）")
+    type: MetricType = Field(..., description="メトリクスタイプ")
+    description: Optional[str] = Field(None, description="メトリクスの説明（任意）")
+    is_higher_better: bool = Field(True, description="スコアが高いほど良い評価とするか")
+    parameters: Optional[Dict[str, Any]] = Field(None, description="メトリクスパラメータ（任意）")
+
+
+class MetricCreate(MetricBase):
+    """メトリクス作成モデル"""
+    pass
+
+
+class MetricUpdate(CamelModel):
+    """メトリクス更新モデル"""
+    name: Optional[str] = Field(None, description="メトリクス名")
+    type: Optional[MetricType] = Field(None, description="メトリクスタイプ")
+    description: Optional[str] = Field(None, description="メトリクスの説明")
+    is_higher_better: Optional[bool] = Field(None, description="スコアが高いほど良い評価とするか")
+    parameters: Optional[Dict[str, Any]] = Field(None, description="メトリクスパラメータ")
+
+
+class Metric(MetricBase):
+    """メトリクスレスポンスモデル"""
+    id: str = Field(..., description="メトリクスID")
     created_at: str = Field(..., description="作成日時")
     updated_at: str = Field(..., description="更新日時")
 

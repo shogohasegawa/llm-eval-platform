@@ -27,7 +27,7 @@ from app.utils.dataset.operations import (
 )
 from app.config.config import get_settings
 
-router = APIRouter(prefix="/api/datasets", tags=["datasets"])
+router = APIRouter(prefix="/datasets", tags=["datasets"])
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
