@@ -3,6 +3,16 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AppProvider } from './contexts/AppContext';
 import { ThemeContextProvider } from './contexts/ThemeContext';
+
+// 環境変数のロギング（デバッグ用）
+if (import.meta.env.VITE_DEBUG_MODE === 'true') {
+  console.log('App Config:', {
+    apiBaseUrl: import.meta.env.VITE_API_BASE_URL,
+    appName: import.meta.env.VITE_APP_NAME,
+    appVersion: import.meta.env.VITE_APP_VERSION,
+    logLevel: import.meta.env.VITE_LOG_LEVEL,
+  });
+}
 import Providers from './pages/Providers';
 import ProviderDetail from './pages/ProviderDetail';
 import Datasets from './pages/Datasets';

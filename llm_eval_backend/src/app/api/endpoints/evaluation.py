@@ -12,7 +12,7 @@ from app.utils.litellm_helper import get_provider_options
 from app.metrics import METRIC_REGISTRY
 from app.utils.job_manager import get_job_manager
 
-router = APIRouter(prefix="/evaluation", tags=["evaluation"])
+router = APIRouter(prefix="/api/evaluations", tags=["evaluations"])
 
 
 @router.get("/metrics", response_model=MetricsListResponse)

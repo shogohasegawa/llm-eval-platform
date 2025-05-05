@@ -1,115 +1,116 @@
-# LLM Leaderboard App
+# LLM Evaluation Platform - Frontend
 
-A web application for tracking, comparing, and visualizing language model performance across different providers, datasets, and metrics.
+フロントエンドアプリケーションで、言語モデルのパフォーマンスを追跡、比較、可視化するためのWebUIを提供します。
 
-## Features
+## 機能
 
-- Track multiple LLM providers and their models
-- Manage datasets and dataset items for evaluation
-- Record model inferences and their results
-- Define and track various performance metrics
-- View leaderboards based on different evaluation criteria
+- 複数のLLMプロバイダーとそのモデルを管理
+- 評価用のデータセットとデータセットアイテムを管理
+- モデル推論と結果を記録
+- さまざまなパフォーマンス指標を定義・追跡
+- 異なる評価基準に基づくリーダーボードを表示
 
-## Tech Stack
+## 技術スタック
 
 - React 18 with TypeScript
-- Material UI for component library
-- React Router for navigation
-- React Query for API data management
-- Vite for fast development and building
+- Material UI コンポーネントライブラリ
+- React Router ナビゲーション
+- React Query API データ管理
+- Vite 高速開発とビルド
 
-## Installation
+## インストール
 
-### Prerequisites
+### 前提条件
 
-- Node.js (version 16 or higher)
-- npm or yarn
+- Node.js (version 16 以上)
+- npm または yarn
+- バックエンドAPIサーバー（`llm_eval_backend`）が実行中であること
 
-### Setup
+### セットアップ
 
-1. Clone the repository:
-
-```bash
-git clone https://github.com/r488it/llm-leaderboard-app.git
-cd llm-leaderboard-app
-```
-
-2. Install dependencies:
+1. 依存関係をインストール:
 
 ```bash
 npm install
 ```
 
-or using yarn:
+または yarn を使用:
 
 ```bash
 yarn install
 ```
 
-## Usage
+2. 環境変数の設定:
 
-### Development
+`.env` ファイルを作成して以下の内容を設定:
 
-To start the development server:
+```
+VITE_API_BASE_URL=http://localhost:8000
+```
+
+※ バックエンドAPIのURLに合わせて調整してください
+
+## 使用方法
+
+### 開発
+
+開発サーバーを起動（バックエンドAPIが実行中であることを確認）:
 
 ```bash
 npm run dev
 ```
 
-This will start the development server at `http://localhost:3000` (default Vite port).
+これにより開発サーバーが `http://localhost:3000` で起動します。
 
-### Building for Production
+### 本番用ビルド
 
-To build the application for production:
+本番用にアプリケーションをビルド:
 
 ```bash
 npm run build
 ```
 
-This will create optimized production files in the `dist` directory.
+これにより `dist` ディレクトリに最適化された本番ファイルが作成されます。
 
-### Preview Production Build
+### 本番ビルドのプレビュー
 
-To preview the production build locally:
+本番ビルドをローカルでプレビュー:
 
 ```bash
 npm run preview
 ```
 
-### Type Checking
+### 型チェック
 
-Run TypeScript type checking without emitting files:
+ファイルを生成せずにTypeScriptの型チェックを実行:
 
 ```bash
 npm run typecheck
 ```
 
-### Linting
+### Lint
 
-Run ESLint to check for code quality issues:
+コード品質の問題をチェックするためにESLintを実行:
 
 ```bash
 npm run lint
 ```
 
-## Application Structure
+## アプリケーション構造
 
-- `/src` - Main source code
-  - `/api` - API client and service files for data fetching
-  - `/components` - Reusable UI components
-  - `/contexts` - React context providers
-  - `/hooks` - Custom React hooks
-  - `/pages` - Top-level page components
-  - `/types` - TypeScript interfaces and type definitions
+- `/src` - メインソースコード
+  - `/api` - APIクライアントとデータフェッチング用のサービスファイル
+  - `/components` - 再利用可能なUIコンポーネント
+  - `/contexts` - Reactコンテキストプロバイダー
+  - `/hooks` - カスタムReactフック
+  - `/pages` - トップレベルのページコンポーネント
+  - `/types` - TypeScriptインターフェースと型定義
 
-## Contributing
+## バックエンドAPIとの連携
 
-1. Fork the repository
-2. Create your feature branch: `git checkout -b feature/amazing-feature`
-3. Commit your changes: `git commit -m 'Add some amazing feature'`
-4. Push to the branch: `git push origin feature/amazing-feature`
-5. Open a Pull Request
+このフロントエンドアプリケーションは、`llm_eval_backend`で提供されるAPIエンドポイントを使用してデータを取得・更新します。
+開発時には、Viteのプロキシ機能を使用して `/api` リクエストをバックエンドサーバーに転送します。
 
-## License
+## ライセンス
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+このプロジェクトはMITライセンスの下でライセンスされています - 詳細についてはLICENSEファイルを参照してください。

@@ -3,17 +3,17 @@ import { Provider, ProviderFormData, Model, ModelFormData } from '../types/provi
 
 /**
  * LLMプロバイダとモデルAPI
- * バックエンドの/api/db/providersと/api/db/modelsエンドポイントと連携
+ * バックエンドの/api/providersと/api/modelsエンドポイントと連携
  */
 export const providersApi = {
   // プロバイダ一覧の取得
   getProviders: async (): Promise<Provider[]> => {
-    return apiClient.get<Provider[]>('/api/db/providers');
+    return apiClient.get<Provider[]>('/api/providers');
   },
 
   // 特定のプロバイダの取得
   getProvider: async (id: string): Promise<Provider> => {
-    return apiClient.get<Provider>(`/api/db/providers/${id}`);
+    return apiClient.get<Provider>(`/api/providers/${id}`);
   },
 
   // プロバイダの作成
@@ -43,7 +43,7 @@ export const providersApi = {
     };
     
     console.log(`Creating provider with type: ${providerType} for name: ${data.name}`);
-    return apiClient.post<Provider>('/api/db/providers', dataWithType);
+    return apiClient.post<Provider>('/api/providers', dataWithType);
   },
 
   // プロバイダの更新
@@ -80,27 +80,27 @@ export const providersApi = {
       console.log(`Updating provider with type: ${typeToUpdate} for name: ${data.name}`);
     }
     
-    return apiClient.put<Provider>(`/api/db/providers/${id}`, dataWithType);
+    return apiClient.put<Provider>(`/api/providers/${id}`, dataWithType);
   },
 
   // プロバイダの削除
   deleteProvider: async (id: string): Promise<void> => {
-    return apiClient.delete<void>(`/api/db/providers/${id}`);
+    return apiClient.delete<void>(`/api/providers/${id}`);
   },
 
   // すべてのモデル一覧の取得
   getAllModels: async (): Promise<Model[]> => {
-    return apiClient.get<Model[]>('/api/db/models');
+    return apiClient.get<Model[]>('/api/models');
   },
 
   // 特定のモデルの取得
   getModel: async (id: string): Promise<Model> => {
-    return apiClient.get<Model>(`/api/db/models/${id}`);
+    return apiClient.get<Model>(`/api/models/${id}`);
   },
 
   // プロバイダのモデル一覧の取得
   getProviderModels: async (providerId: string): Promise<Model[]> => {
-    return apiClient.get<Model[]>(`/api/db/models/provider/${providerId}`);
+    return apiClient.get<Model[]>(`/api/models/by-provider/${providerId}`);
   },
 
   // モデルの作成
@@ -114,7 +114,7 @@ export const providersApi = {
     
     console.log(`Creating model:`, processedData);
     try {
-      const result = await apiClient.post<Model>('/api/db/models', processedData);
+      const result = await apiClient.post<Model>('/api/models', processedData);
       console.log('API response:', result);
       return result;
     } catch (error) {
@@ -131,11 +131,11 @@ export const providersApi = {
       endpoint: data.endpoint?.trim() || undefined,
       apiKey: data.apiKey?.trim() || undefined
     };
-    return apiClient.put<Model>(`/api/db/models/${modelId}`, processedData);
+    return apiClient.put<Model>(`/api/models/${modelId}`, processedData);
   },
 
   // モデルの削除
   deleteModel: async (modelId: string): Promise<void> => {
-    return apiClient.delete<void>(`/api/db/models/${modelId}`);
+    return apiClient.delete<void>(`/api/models/${modelId}`);
   }
 };

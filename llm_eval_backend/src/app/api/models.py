@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional, Literal
+from typing import List, Dict, Any, Optional, Literal, Union
 from datetime import datetime
 import os
 from enum import Enum
@@ -144,3 +144,77 @@ class DatasetDeleteResponse(BaseModel):
     """データセット削除レスポンス"""
     success: bool
     message: str
+
+
+# 推論関連モデル
+class InferenceStatus(str, Enum):
+    """推論ステータス列挙型"""
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class InferenceResult(BaseModel):
+    """推論結果モデル"""
+    id: str
+    inference_id: str
+    input: str
+    expected_output: Optional[str] = None
+    actual_output: str
+    metrics: Optional[Dict[str, float]] = None
+    latency: Optional[float] = None
+    token_count: Optional[int] = None
+    created_at: datetime
+
+
+class Inference(BaseModel):
+    """推論モデル"""
+    id: str
+    name: str
+    description: Optional[str] = None
+    dataset_id: str
+    provider_id: str
+    model_id: str
+    status: InferenceStatus
+    progress: int = 0
+    metrics: Optional[Dict[str, float]] = None
+    results: List[InferenceResult] = []
+    created_at: datetime
+    updated_at: datetime
+    completed_at: Optional[datetime] = None
+    error: Optional[str] = None
+
+
+class InferenceCreate(BaseModel):
+    """推論作成リクエストモデル"""
+    name: str
+    description: Optional[str] = None
+    dataset_id: str
+    provider_id: str
+    model_id: str
+    max_tokens: Optional[int] = 512
+    temperature: Optional[float] = 0.7
+    top_p: Optional[float] = 1.0
+    num_samples: Optional[int] = 100
+    n_shots: Optional[int] = 0
+
+
+class InferenceUpdate(BaseModel):
+    """推論更新リクエストモデル"""
+    name: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[InferenceStatus] = None
+    progress: Optional[int] = None
+    metrics: Optional[Dict[str, float]] = None
+
+
+class InferenceListResponse(BaseModel):
+    """推論一覧レスポンス"""
+    inferences: List[Inference]
+
+
+class InferenceDetailResponse(BaseModel):
+    """推論詳細レスポンス"""
+    inference: Inference
+    results: List[InferenceResult]

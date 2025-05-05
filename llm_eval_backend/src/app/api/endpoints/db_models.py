@@ -17,7 +17,7 @@ from app.utils.litellm_helper import update_router_model
 # ロガーの設定
 logger = logging.getLogger("llmeval")
 
-router = APIRouter(prefix="/db/models", tags=["models"])
+router = APIRouter(prefix="/api/models", tags=["models"])
 
 
 @router.post("", response_model=Model, status_code=status.HTTP_201_CREATED)
@@ -102,7 +102,7 @@ async def get_all_models():
         )
 
 
-@router.get("/provider/{provider_id}", response_model=List[Model])
+@router.get("/by-provider/{provider_id}", response_model=List[Model])
 async def get_models_by_provider(provider_id: str):
     """
     特定のプロバイダーに属するモデルを取得します。

@@ -27,12 +27,12 @@ from app.utils.dataset.operations import (
 )
 from app.config.config import get_settings
 
-router = APIRouter(prefix="/datasets", tags=["datasets"])
+router = APIRouter(prefix="/api/datasets", tags=["datasets"])
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
-@router.post("/upload-file", response_model=DatasetDetailResponse)
+@router.post("/upload", response_model=DatasetDetailResponse)
 async def upload_dataset_file(
     file: UploadFile = File(...),
     dataset_type: str = Form(..., description="データセットタイプ: 'test' または 'n_shot'")
@@ -106,7 +106,7 @@ async def upload_dataset_file(
         )
 
 
-@router.get("/list", response_model=DatasetListResponse)
+@router.get("", response_model=DatasetListResponse)
 async def list_datasets(type: Optional[str] = Query(None, description="データセットタイプでフィルタ ('test' または 'n_shot')")):
     """
     利用可能なデータセットの一覧を取得
@@ -140,7 +140,7 @@ async def list_datasets(type: Optional[str] = Query(None, description="データ
         )
 
 
-@router.get("/detail/{name}", response_model=DatasetDetailResponse)
+@router.get("/{name}", response_model=DatasetDetailResponse)
 async def get_dataset_detail(
     name: str = PathParam(..., description="データセット名")
 ):
@@ -176,8 +176,8 @@ async def get_dataset_detail(
         )
 
 
-@router.delete("/delete", response_model=DatasetDeleteResponse)
-async def delete_dataset_endpoint(
+@router.delete("/by-path", response_model=DatasetDeleteResponse)
+async def delete_dataset_by_path(
     file_path: str = Query(..., description="削除するデータセットファイルのパス")
 ):
     """
