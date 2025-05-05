@@ -1,0 +1,31 @@
+{
+  "name": "aio",
+  "description": "AI Output Evaluation Dataset (Few-shot examples)",
+  "samples": [
+    {
+      "id": "aio_train_1",
+      "input": "1+1の計算結果は？",
+      "output": "1+1の計算結果は2です。"
+    },
+    {
+      "id": "aio_train_2",
+      "input": "日本の通貨は何ですか？",
+      "output": "日本の通貨は円（¥）です。"
+    },
+    {
+      "id": "aio_train_3",
+      "input": "地球の衛星は？",
+      "output": "地球の衛星は月です。"
+    },
+    {
+      "id": "aio_train_4",
+      "input": "人間の体の中で最大の臓器は？",
+      "output": "人間の体の中で最大の臓器は皮膚です。"
+    },
+    {
+      "id": "aio_train_5",
+      "input": "光の三原色は何ですか？",
+      "output": "光の三原色は赤（Red）、緑（Green）、青（Blue）です。"
+    }
+  ]
+}

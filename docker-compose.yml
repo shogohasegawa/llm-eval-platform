@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: ./llm_eval_backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./llm_eval_backend/.env
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./llm_eval_backend/src:/app/src
+      - ./llm_eval_backend/results:/app/results
+      - ../datasets:/external_datasets # コンテナ外のデータセットディレクトリをマウント
+      - ./external_data:/external_data # コンテナ外のデータ保存用ディレクトリをマウント
+    environment:
+      - LLMEVAL_ENV=development
+      - LLMEVAL_LOG_LEVEL=INFO
+      - LLMEVAL_LITELLM_BASE_URL=http://192.168.101.204:11434/api/generate
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - LLMEVAL_DB_PATH=/external_data/llm_eval.db # データベースファイルのパス
+    depends_on:
+      - mlflow
+    restart: unless-stopped
+    networks:
+      - llm-eval-network
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:latest
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./llm_eval_backend/mlflow:/mlflow
+    environment:
+      - MLFLOW_TRACKING_URI=http://localhost:5000
+      - MLFLOW_BACKEND_STORE_URI=sqlite:///mlflow/mlflow.db
+      - MLFLOW_DEFAULT_ARTIFACT_ROOT=file:///mlflow/artifacts
+    command: mlflow server --host 0.0.0.0
+    networks:
+      - llm-eval-network
+
+  # LLMサービス（Ollamaなど）と接続する場合のサンプル設定
+  # Ollamaサービス - ローカルLLMモデルを実行（GPU対応版 - 旧runtime指定形式）
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    runtime: nvidia # GPUサポート（Compose 2.3形式）
+
+  llm-leaderboard-app:
+    build:
+      context: ./llm_eval_frontend
+      dockerfile: Dockerfile
+    ports:
+      - "4173:3000"
+    environment:
+      - VITE_API_BASE_URL=http://api:8000
+    depends_on:
+      - api
+    networks:
+      - llm-eval-network
+    restart: always
+
+networks:
+  llm-eval-network:
+    driver: bridge
+
+volumes:
+  mlflow:
+  ollama_data:
