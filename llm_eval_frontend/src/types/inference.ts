@@ -32,13 +32,17 @@ export interface Inference {
   datasetId: string;
   providerId: string;
   modelId: string;
+  // 表示用の追加フィールド
+  providerName?: string;
+  providerType?: string;
+  modelName?: string;
   status: InferenceStatus;
   progress: number; // 0-100
   results: InferenceResult[];
   metrics?: Record<string, number>;
-  createdAt: Date;
-  updatedAt: Date;
-  completedAt?: Date;
+  createdAt: string | Date;
+  updatedAt: string | Date;
+  completedAt?: string | Date;
   error?: string;
 }
 

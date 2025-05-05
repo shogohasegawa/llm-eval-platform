@@ -75,12 +75,22 @@ const Providers: React.FC = () => {
   const updateModel = useUpdateModel(editingModel?.id || '');
   const deleteModel = useDeleteModel();
   
+  // データ取得状況のログ
+  console.log('Providers data:', providers);
+  console.log('Models data:', models);
+  console.log('Provider loading:', isLoadingProviders);
+  console.log('Provider error:', isErrorProviders);
+  console.log('Models loading:', isLoadingModels);
+  console.log('Models error:', isErrorModels);
+  
   // エラーハンドリング
   if (providersError) {
+    console.error('Provider error details:', providersError);
     setError(`プロバイダの取得に失敗しました: ${providersError.message}`);
   }
   
   if (modelsError) {
+    console.error('Model error details:', modelsError);
     setError(`モデルの取得に失敗しました: ${modelsError.message}`);
   }
   
@@ -139,6 +149,9 @@ const Providers: React.FC = () => {
   
   // モデルの追加/編集ダイアログを開く
   const handleOpenModelDialog = (model?: Model) => {
+    console.log("モデルダイアログを開きます", model);
+    console.log("利用可能なプロバイダ:", providers);
+    
     if (model) {
       setEditingModel(model);
     } else {
@@ -277,8 +290,9 @@ const Providers: React.FC = () => {
               variant="contained"
               startIcon={<AddIcon />}
               onClick={() => handleOpenModelDialog()}
+              disabled={!providers || providers.length === 0}
             >
-              モデルを追加
+              モデルを追加 {providers?.length === 0 && '(先にプロバイダを追加してください)'}
             </Button>
           </Box>
           
@@ -293,22 +307,32 @@ const Providers: React.FC = () => {
               モデルの取得中にエラーが発生しました。
             </Alert>
           ) : models && models.length > 0 ? (
-            <Grid container spacing={2}>
-              {models.map((model) => (
-                <Grid item xs={12} sm={6} md={4} key={model.id}>
-                  <ModelCard
-                    model={model}
-                    onEdit={handleOpenModelDialog}
-                    onDelete={() => handleDeleteModel(model)}
-                    onSelect={handleSelectModel}
-                  />
-                </Grid>
-              ))}
-            </Grid>
+            <>
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="subtitle1">
+                  登録モデル数: {models.length}
+                </Typography>
+              </Box>
+              <Grid container spacing={2}>
+                {models.map((model, index) => (
+                  <Grid item xs={12} sm={6} md={4} key={model.id || `model-${index}`}>
+                    <ModelCard
+                      model={model}
+                      onEdit={handleOpenModelDialog}
+                      onDelete={() => handleDeleteModel(model)}
+                      onSelect={handleSelectModel}
+                    />
+                  </Grid>
+                ))}
+              </Grid>
+            </>
           ) : (
             <Paper sx={{ p: 3, textAlign: 'center' }}>
               <Typography variant="body1" color="text.secondary">
                 モデルが登録されていません。「モデルを追加」ボタンをクリックして最初のモデルを登録してください。
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
+                モデルが表示されていない場合、API呼び出しでエラーが発生している可能性があります。コンソールを確認してください。
               </Typography>
             </Paper>
           )}

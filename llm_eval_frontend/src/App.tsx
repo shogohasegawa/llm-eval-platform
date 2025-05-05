@@ -27,9 +27,12 @@ import Layout from './components/common/Layout';
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      refetchOnWindowFocus: false,
-      retry: 1,
-      staleTime: 5 * 60 * 1000, // 5分
+      refetchOnWindowFocus: true, // ウィンドウフォーカス時に更新
+      refetchOnMount: true,      // コンポーネントマウント時に更新
+      refetchOnReconnect: true,  // ネットワーク再接続時に更新
+      retry: 3,                  // エラー時のリトライ回数
+      staleTime: 10000,          // 10秒でデータを古いとみなす
+      cacheTime: 5 * 60 * 1000,  // 5分間キャッシュを保持
     },
   },
 });

@@ -183,9 +183,31 @@ const InferenceFormDialog: React.FC<InferenceFormDialogProps> = ({
   // フォーム送信
   const handleSubmit = () => {
     if (validate()) {
-      console.log('フォーム送信データ:', formData);
-      console.log('データセットID:', formData.datasetId);
-      onSubmit(formData);
+      // APIによる推論作成のためにデータを準備
+      const processedData = {
+        ...formData,
+        // ユーザーが指定したサンプル数をそのまま使用
+        numSamples: formData.numSamples,
+        // データセットIDを正規化（パスの場合は適切な形式に）
+        datasetId: formData.datasetId,
+        // スネークケース形式のフィールド名を追加（バックエンドAPI用）
+        dataset_id: formData.datasetId,
+        provider_id: formData.providerId,
+        model_id: formData.modelId,
+        num_samples: formData.numSamples,
+        n_shots: formData.nShots,
+        max_tokens: formData.maxTokens,
+        top_p: formData.topP
+      };
+      
+      // 詳細なログを出力
+      console.log('フォーム送信データ (元):', formData);
+      console.log('フォーム送信データ (処理後):', processedData);
+      console.log('データセットID:', processedData.datasetId);
+      console.log('サンプル数:', processedData.numSamples);
+      
+      // 処理済みデータを送信
+      onSubmit(processedData);
     }
   };
 
@@ -273,8 +295,12 @@ const InferenceFormDialog: React.FC<InferenceFormDialogProps> = ({
                 label="データセット"
               >
                 {datasets.map((dataset) => (
-                  <MenuItem key={dataset.id || dataset.name} value={dataset.name}>
-                    {dataset.name} ({dataset.type})
+                  <MenuItem 
+                    key={dataset.id || dataset.name} 
+                    value={dataset.name || ''} // データセット名を値として使用（バックエンドが名前を期待）
+                  >
+                    {dataset.name} ({dataset.type || ''})
+                    {/* デバッグ情報は削除 */}
                   </MenuItem>
                 ))}
               </Select>

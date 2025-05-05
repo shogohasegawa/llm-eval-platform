@@ -94,7 +94,7 @@ const Layout: React.FC = () => {
           <ListItemIcon>
             <LeaderboardIcon color={isActive('/leaderboard') ? 'primary' : undefined} />
           </ListItemIcon>
-          <ListItemText primary="リーダーボード" />
+          <ListItemText primary="リーダーボード (MLflow)" />
         </ListItem>
       </List>
     </div>

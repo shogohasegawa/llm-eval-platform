@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { metricsApi } from '../api/metrics';
-import { Metric, MetricFormData, LeaderboardEntry, LeaderboardFilterOptions } from '../types/metrics';
+import { Metric, MetricFormData, LeaderboardEntry, LeaderboardFilterOptions, MetricTypeInfo } from '../types/metrics';
 
 /**
  * 評価指標関連のカスタムフック
@@ -23,6 +23,23 @@ export const useMetrics = () => {
   });
 };
 
+// 利用可能なメトリックタイプを取得するフック
+export const useMetricTypes = () => {
+  return useQuery<MetricTypeInfo[], Error>({
+    queryKey: ['metricTypes'],
+    queryFn: async () => {
+      try {
+        const result = await metricsApi.getMetricTypes();
+        console.log('Metric Types API response:', result);
+        return result;
+      } catch (error) {
+        console.error('Metric Types API error:', error);
+        throw error;
+      }
+    },
+  });
+};
+
 // 特定の評価指標を取得するフック
 export const useMetric = (id: string) => {
   return useQuery<Metric, Error>({
@@ -39,9 +56,12 @@ export const useCreateMetric = () => {
   return useMutation<Metric, Error, MetricFormData>({
     mutationFn: async (data) => {
       console.log('Creating metric with data:', data);
+      console.log('isHigherBetter value:', data.isHigherBetter);
+      
       try {
         const result = await metricsApi.createMetric(data);
         console.log('Create metric result:', result);
+        console.log('Result isHigherBetter:', result.isHigherBetter);
         return result;
       } catch (error) {
         console.error('Create metric error:', error);

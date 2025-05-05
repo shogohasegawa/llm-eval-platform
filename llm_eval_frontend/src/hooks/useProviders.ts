@@ -69,7 +69,36 @@ export const useDeleteProvider = () => {
 export const useModels = () => {
   return useQuery<Model[], Error>({
     queryKey: ['models'],
-    queryFn: () => providersApi.getAllModels(),
+    queryFn: async () => {
+      try {
+        const result = await providersApi.getAllModels();
+        console.log('Models API response:', result);
+        
+        // レスポンスがないか不適切な形式の場合のバリデーション
+        if (!result || !Array.isArray(result)) {
+          console.warn('Models API returned invalid format:', result);
+          return [];
+        }
+        
+        // モデルIDの検証とロギング
+        result.forEach((model, index) => {
+          if (!model.id) {
+            console.warn(`Model at index ${index} has no ID:`, model);
+          }
+        });
+        
+        return result;
+      } catch (error) {
+        console.error('Models API error:', error);
+        throw error;
+      }
+    },
+    // 再試行設定
+    retry: 2,
+    retryDelay: 1000,
+    // キャッシュとステール設定
+    staleTime: 30000, // 30秒間はキャッシュを使用
+    refetchOnWindowFocus: true,
   });
 };
 

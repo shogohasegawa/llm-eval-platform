@@ -1,288 +1,225 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Box, 
   Typography, 
   Button, 
-  Grid, 
   Paper, 
   CircularProgress,
   Alert,
   Divider,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Chip,
-  Tooltip,
+  Tab,
+  Tabs,
   IconButton,
-  SelectChangeEvent
+  Link
 } from '@mui/material';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
-import InfoIcon from '@mui/icons-material/Info';
-import { useLeaderboard, useExportLeaderboard, useMetrics } from '../hooks/useMetrics';
-import { useDatasets } from '../hooks/useDatasets';
-import { useProviders } from '../hooks/useProviders';
-import { LeaderboardFilterOptions } from '../types/metrics';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import { useTheme } from '@mui/material/styles';
 import { useAppContext } from '../contexts/AppContext';
+
+interface TabPanelProps {
+  children?: React.ReactNode;
+  index: number;
+  value: number;
+}
+
+function TabPanel(props: TabPanelProps) {
+  const { children, value, index, ...other } = props;
+
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`leaderboard-tabpanel-${index}`}
+      aria-labelledby={`leaderboard-tab-${index}`}
+      {...other}
+      style={{ height: '100%' }}
+    >
+      {value === index && (
+        <Box sx={{ height: '100%' }}>
+          {children}
+        </Box>
+      )}
+    </div>
+  );
+}
 
 /**
  * リーダーボードページ
+ * 
+ * MLflow UIをiframeで埋め込み表示します。
+ * ブラウザのセキュリティ制限によりiframeでのアクセスが制限される場合があるため、
+ * 直接MLflowにアクセスするオプションも提供します。
  */
 const Leaderboard: React.FC = () => {
-  // コンテキストから状態を取得
+  const theme = useTheme();
   const { setError } = useAppContext();
-  
-  // フィルター状態
-  const [filters, setFilters] = useState<LeaderboardFilterOptions>({
-    limit: 10
-  });
-  
-  // データの取得
-  const { 
-    data: leaderboard, 
-    isLoading: isLoadingLeaderboard, 
-    isError: isErrorLeaderboard, 
-    error: leaderboardError 
-  } = useLeaderboard(filters);
-  
-  const { data: metrics } = useMetrics();
-  const { data: datasets } = useDatasets();
-  const { data: providers } = useProviders();
-  
-  // エクスポート機能
-  const exportLeaderboard = useExportLeaderboard();
-  
-  // エラーハンドリング
-  if (leaderboardError) {
-    setError(`リーダーボードの取得に失敗しました: ${leaderboardError.message}`);
-  }
-  
-  // フィルターの変更処理
-  const handleFilterChange = (e: SelectChangeEvent<string | number>) => {
-    const { name, value } = e.target;
-    if (name) {
-      setFilters(prev => ({
-        ...prev,
-        [name]: value === 'all' ? undefined : value
-      }));
-    }
+  const [tabValue, setTabValue] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [iframeError, setIframeError] = useState<string | null>(null);
+
+  // タブの変更ハンドラ
+  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+    setTabValue(newValue);
   };
-  
-  // リーダーボードのエクスポート
-  const handleExportLeaderboard = async () => {
-    try {
-      const blob = await exportLeaderboard.mutateAsync(filters);
-      
-      // ダウンロードリンクを作成
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `leaderboard_export_${new Date().toISOString().slice(0, 10)}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      
-      // クリーンアップ
-      URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (err) {
-      if (err instanceof Error) {
-        setError(`リーダーボードのエクスポートに失敗しました: ${err.message}`);
+
+  // APIサーバーのURLを取得（環境変数またはウィンドウロケーションから）
+  const getApiUrl = () => {
+    const hostname = window.location.hostname;
+    return `http://${hostname}:8001`;
+  };
+
+  // MLflowへの直接アクセスURLを取得
+  const getMlflowDirectUrl = () => {
+    // localhost時は8001のプロキシを使用する
+    return `${getApiUrl()}/proxy-mlflow/`;
+  };
+
+  // APIを通じたMLflowへのプロキシURLを取得
+  const getMlflowProxyUrl = () => {
+    return `${getApiUrl()}/proxy-mlflow/`;
+  };
+
+  // MLflow UIをiframeで表示するためのURL
+  const getMlflowUiUrl = () => {
+    return `${getApiUrl()}/mlflow-ui`;
+  };
+
+  // iframeのonLoadハンドラ
+  const handleIframeLoad = () => {
+    setLoading(false);
+  };
+
+  // iframeのonErrorハンドラ
+  const handleIframeError = () => {
+    setLoading(false);
+    setIframeError('MLflow UIの読み込みに失敗しました。');
+  };
+
+  // 外部リンクを新しいタブで開く
+  const openExternalLink = (url: string) => {
+    window.open(url, '_blank', 'noopener');
+  };
+
+  // MLflowへの接続をテスト
+  useEffect(() => {
+    const testMlflowConnection = async () => {
+      try {
+        const response = await fetch(getMlflowProxyUrl(), { 
+          method: 'HEAD',
+          headers: {
+            'Cache-Control': 'no-cache'
+          }
+        });
+        if (!response.ok) {
+          setIframeError(`MLflowへの接続に問題があります（ステータス: ${response.status}）`);
+        }
+      } catch (err) {
+        setIframeError('MLflowサーバーに接続できません。サーバーが起動していることを確認してください。');
       }
-    }
-  };
-  
-  // 選択された評価指標
-  const selectedMetric = metrics?.find(m => m.id === filters.metricId);
-  
-  // ローディング中
-  const isLoading = isLoadingLeaderboard;
-  
+    };
+
+    testMlflowConnection();
+  }, []);
+
   return (
-    <Box sx={{ p: 3 }}>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+    <Box sx={{ p: 3, height: 'calc(100vh - 70px)', display: 'flex', flexDirection: 'column' }}>
+      <Box sx={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center',
+        mb: 2
+      }}>
         <Typography variant="h4" component="h1">
-          リーダーボード
+          リーダーボード (MLflow)
         </Typography>
-        <Button
-          variant="outlined"
-          startIcon={<FileDownloadIcon />}
-          onClick={handleExportLeaderboard}
-          disabled={exportLeaderboard.isPending || !leaderboard || leaderboard.length === 0}
-        >
-          CSVエクスポート
-        </Button>
-      </Box>
-      
-      <Divider sx={{ mb: 3 }} />
-      
-      {/* フィルター */}
-      <Paper sx={{ p: 2, mb: 3 }}>
-        <Grid container spacing={2} alignItems="center">
-          <Grid item xs={12} sm={3}>
-            <FormControl fullWidth size="small">
-              <InputLabel>データセット</InputLabel>
-              <Select
-                name="datasetId"
-                value={filters.datasetId || 'all'}
-                onChange={handleFilterChange}
-                label="データセット"
-              >
-                <MenuItem value="all">すべて</MenuItem>
-                {datasets?.map((dataset) => (
-                  <MenuItem key={dataset.id} value={dataset.id}>
-                    {dataset.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
+        
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={<OpenInNewIcon />}
+            onClick={() => openExternalLink(getMlflowProxyUrl())}
+          >
+            新しいタブで開く
+          </Button>
           
-          <Grid item xs={12} sm={3}>
-            <FormControl fullWidth size="small">
-              <InputLabel>プロバイダ</InputLabel>
-              <Select
-                name="providerId"
-                value={filters.providerId || 'all'}
-                onChange={handleFilterChange}
-                label="プロバイダ"
-              >
-                <MenuItem value="all">すべて</MenuItem>
-                {providers?.map((provider) => (
-                  <MenuItem key={provider.id} value={provider.id}>
-                    {provider.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-          
-          <Grid item xs={12} sm={3}>
-            <FormControl fullWidth size="small">
-              <InputLabel>評価指標</InputLabel>
-              <Select
-                name="metricId"
-                value={filters.metricId || 'all'}
-                onChange={handleFilterChange}
-                label="評価指標"
-              >
-                <MenuItem value="all">すべて</MenuItem>
-                {metrics?.map((metric) => (
-                  <MenuItem key={metric.id} value={metric.id}>
-                    {metric.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-          
-          <Grid item xs={12} sm={3}>
-            <FormControl fullWidth size="small">
-              <InputLabel>表示件数</InputLabel>
-              <Select
-                name="limit"
-                value={filters.limit || 10}
-                onChange={handleFilterChange}
-                label="表示件数"
-              >
-                <MenuItem value={5}>5件</MenuItem>
-                <MenuItem value={10}>10件</MenuItem>
-                <MenuItem value={20}>20件</MenuItem>
-                <MenuItem value={50}>50件</MenuItem>
-                <MenuItem value={100}>100件</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-        </Grid>
-      </Paper>
-      
-      {isLoading ? (
-        <Box display="flex" justifyContent="center" my={4}>
-          <CircularProgress />
+          <Button
+            variant="outlined"
+            startIcon={<FileDownloadIcon />}
+            onClick={() => window.location.reload()}
+          >
+            再読み込み
+          </Button>
         </Box>
-      ) : isErrorLeaderboard ? (
-        <Alert severity="error" sx={{ mb: 3 }}>
-          リーダーボードの取得中にエラーが発生しました。
+      </Box>
+
+      <Divider sx={{ mb: 2 }} />
+      
+      {iframeError && (
+        <Alert 
+          severity="warning" 
+          sx={{ mb: 2 }}
+          action={
+            <Button 
+              color="inherit" 
+              size="small"
+              onClick={() => window.location.reload()}
+            >
+              再読み込み
+            </Button>
+          }
+        >
+          {iframeError}
         </Alert>
-      ) : leaderboard && leaderboard.length > 0 ? (
-        <TableContainer component={Paper}>
-          <Table sx={{ minWidth: 650 }} aria-label="リーダーボードテーブル">
-            <TableHead>
-              <TableRow>
-                <TableCell>順位</TableCell>
-                <TableCell>モデル</TableCell>
-                <TableCell>プロバイダ</TableCell>
-                <TableCell>データセット</TableCell>
-                {selectedMetric ? (
-                  <TableCell>
-                    <Box display="flex" alignItems="center">
-                      {selectedMetric.name}
-                      <Tooltip title={`${selectedMetric.description || selectedMetric.name}（${selectedMetric.isHigherBetter ? '高いほど良い' : '低いほど良い'}）`}>
-                        <IconButton size="small">
-                          <InfoIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    </Box>
-                  </TableCell>
-                ) : (
-                  <TableCell>評価指標</TableCell>
-                )}
-                <TableCell>実行日時</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {leaderboard.map((entry) => (
-                <TableRow key={entry.inferenceId}>
-                  <TableCell>
-                    <Chip 
-                      label={`#${entry.rank}`} 
-                      color={entry.rank <= 3 ? "primary" : "default"} 
-                      variant={entry.rank <= 3 ? "filled" : "outlined"} 
-                    />
-                  </TableCell>
-                  <TableCell>{entry.modelName}</TableCell>
-                  <TableCell>{entry.providerName}</TableCell>
-                  <TableCell>{entry.datasetName}</TableCell>
-                  {selectedMetric ? (
-                    <TableCell>
-                      <Typography variant="body1" fontWeight="bold">
-                        {entry.metrics[selectedMetric.id]?.toFixed(4) || '-'}
-                      </Typography>
-                    </TableCell>
-                  ) : (
-                    <TableCell>
-                      {Object.entries(entry.metrics).map(([key, value]) => {
-                        const metric = metrics?.find(m => m.id === key);
-                        return (
-                          <Box key={key} mb={0.5}>
-                            <Typography variant="body2">
-                              {metric?.name || key}: {value.toFixed(4)}
-                            </Typography>
-                          </Box>
-                        );
-                      })}
-                    </TableCell>
-                  )}
-                  <TableCell>
-                    {new Date(entry.createdAt).toLocaleString()}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      ) : (
-        <Paper sx={{ p: 3, textAlign: 'center' }}>
-          <Typography variant="body1" color="text.secondary">
-            リーダーボードデータがありません。推論を実行し、評価指標を適用してリーダーボードを生成してください。
-          </Typography>
-        </Paper>
       )}
+      
+      <Paper 
+        elevation={2} 
+        sx={{ 
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          position: 'relative',
+          overflow: 'hidden',
+          bgcolor: theme.palette.background.paper
+        }}
+      >
+        {loading && (
+          <Box sx={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            bgcolor: 'rgba(255, 255, 255, 0.7)',
+            zIndex: 10
+          }}>
+            <Box sx={{ textAlign: 'center' }}>
+              <CircularProgress sx={{ mb: 2 }} />
+              <Typography variant="body1">
+                MLflow UIを読み込み中...
+              </Typography>
+            </Box>
+          </Box>
+        )}
+        
+        <iframe
+          src={getMlflowUiUrl()}
+          style={{
+            width: '100%',
+            height: '100%',
+            border: 'none',
+            flex: 1,
+          }}
+          title="MLflow Dashboard"
+          onLoad={handleIframeLoad}
+          onError={handleIframeError}
+        />
+      </Paper>
     </Box>
   );
 };

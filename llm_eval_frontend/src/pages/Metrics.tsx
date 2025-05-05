@@ -138,7 +138,8 @@ const Metrics: React.FC = () => {
       ) : (
         <Paper sx={{ p: 3, textAlign: 'center' }}>
           <Typography variant="body1" color="text.secondary">
-            評価指標が登録されていません。「評価指標を追加」ボタンをクリックして最初の評価指標を作成してください。
+            カスタム評価指標が登録されていません。「評価指標を追加」ボタンをクリックして新しい評価指標を作成してください。
+            評価指標を追加すると、この画面に表示されます。
           </Typography>
         </Paper>
       )}

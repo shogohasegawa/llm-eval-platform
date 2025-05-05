@@ -2,7 +2,24 @@
  * 評価指標の型定義
  */
 
-export type MetricType = 'accuracy' | 'precision' | 'recall' | 'f1' | 'bleu' | 'rouge' | 'exact_match' | 'semantic_similarity' | 'latency' | 'token_count' | 'custom';
+export type MetricType = string;
+
+// メトリックパラメータの情報
+export interface MetricParameterInfo {
+  type: string;
+  description?: string;
+  default?: any;
+  required?: boolean;
+  enum?: any[];
+}
+
+// 利用可能なメトリックタイプの情報
+export interface MetricTypeInfo {
+  name: string;
+  description?: string;
+  parameters?: Record<string, MetricParameterInfo>;
+  is_higher_better: boolean;
+}
 
 export interface Metric {
   id: string;
@@ -20,6 +37,7 @@ export interface MetricFormData {
   type: MetricType;
   description?: string;
   isHigherBetter: boolean;
+  is_higher_better?: boolean; // バックエンド用のスネークケースバージョン
   parameters?: Record<string, any>;
 }
 

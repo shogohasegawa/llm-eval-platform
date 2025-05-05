@@ -36,37 +36,51 @@ const ModelCard: React.FC<ModelCardProps> = ({
   onEdit, 
   onDelete 
 }) => {
+  // フィールド名の正規化（スネークケース・キャメルケース対応）
+  const normalizedModel = {
+    ...model,
+    // キャメルケースとスネークケースの両方に対応
+    id: model.id || model.model_id || '',
+    providerId: model.providerId || model.provider_id || '',
+    displayName: model.displayName || model.display_name || model.name || '',
+    isActive: model.isActive ?? model.is_active ?? true,
+    apiKey: model.apiKey || model.api_key || '',
+    endpoint: model.endpoint || ''
+  };
+  
   // プロバイダ情報を取得
-  const { data: provider } = useProvider(model.providerId);
+  const { data: provider } = useProvider(normalizedModel.providerId);
+
+  console.log('Rendering model card for:', normalizedModel);
 
   const handleClick = () => {
     if (onSelect) {
-      onSelect(model);
+      onSelect(normalizedModel);
     }
   };
 
   const handleEdit = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (onEdit) {
-      onEdit(model);
+      onEdit(normalizedModel);
     }
   };
 
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (onDelete && confirm('このモデルを削除してもよろしいですか？')) {
-      onDelete(model);
+      onDelete(normalizedModel);
     }
   };
 
   // エンドポイントとAPIキーの表示用に加工
-  const truncatedEndpoint = model.endpoint ? 
-    model.endpoint.length > 30 ? 
-      model.endpoint.substring(0, 27) + '...' : 
-      model.endpoint : 
+  const truncatedEndpoint = normalizedModel.endpoint ? 
+    normalizedModel.endpoint.length > 30 ? 
+      normalizedModel.endpoint.substring(0, 27) + '...' : 
+      normalizedModel.endpoint : 
     '未設定';
   
-  const hasApiKey = model.apiKey && model.apiKey.length > 0;
+  const hasApiKey = normalizedModel.apiKey && normalizedModel.apiKey.length > 0;
 
   return (
     <Card 
@@ -86,11 +100,11 @@ const ModelCard: React.FC<ModelCardProps> = ({
       <CardContent sx={{ flexGrow: 1 }}>
         <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
           <Typography variant="h6" component="div" noWrap>
-            {model.displayName}
+            {normalizedModel.displayName}
           </Typography>
           <Stack direction="row" spacing={1}>
-            {model.description && (
-              <Tooltip title={model.description}>
+            {normalizedModel.description && (
+              <Tooltip title={normalizedModel.description}>
                 <IconButton size="small">
                   <InfoIcon fontSize="small" />
                 </IconButton>
@@ -110,7 +124,7 @@ const ModelCard: React.FC<ModelCardProps> = ({
         </Box>
         
         <Typography variant="body2" color="text.secondary" mb={1} noWrap>
-          {model.name}
+          {normalizedModel.name}
         </Typography>
 
         {provider && (
@@ -138,22 +152,34 @@ const ModelCard: React.FC<ModelCardProps> = ({
         
         <Box display="flex" flexWrap="wrap" gap={1} mt={2}>
           <Chip 
-            label={model.isActive ? 'アクティブ' : '非アクティブ'} 
+            label={normalizedModel.isActive ? 'アクティブ' : '非アクティブ'} 
             size="small"
-            color={model.isActive ? 'success' : 'default'}
+            color={normalizedModel.isActive ? 'success' : 'default'}
             variant="outlined"
           />
           
-          {model.parameters && Object.keys(model.parameters).length > 0 && (
+          {/* デバッグ情報（開発中のみ表示） */}
+          {import.meta.env.DEV && (
+            <Tooltip title="モデルID">
+              <Chip 
+                label={`ID: ${normalizedModel.id.substring(0, 8)}...`}
+                size="small"
+                variant="outlined"
+                color="info"
+              />
+            </Tooltip>
+          )}
+          
+          {normalizedModel.parameters && Object.keys(normalizedModel.parameters).length > 0 && (
             <Tooltip title={
               <div>
-                {Object.entries(model.parameters).map(([key, value]) => (
+                {Object.entries(normalizedModel.parameters).map(([key, value]) => (
                   <div key={key}>{`${key}: ${typeof value === 'object' ? JSON.stringify(value) : value}`}</div>
                 ))}
               </div>
             }>
               <Chip 
-                label={`${Object.keys(model.parameters).length}個のパラメータ`}
+                label={`${Object.keys(normalizedModel.parameters).length}個のパラメータ`}
                 size="small"
                 variant="outlined"
               />

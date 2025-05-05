@@ -87,10 +87,19 @@ const MetricCard: React.FC<MetricCardProps> = ({ metric, onEdit, onDelete }) => 
             }} 
           />
           <Chip 
-            label={metric.isHigherBetter ? '高いほど良い' : '低いほど良い'} 
+            label={metric.isHigherBetter === true ? '高いほど良い' : '低いほど良い'} 
             size="small" 
             variant="outlined"
+            color={metric.isHigherBetter === true ? "success" : "warning"}
           />
+          {/* デバッグ情報（表示を有効化） */}
+          <div style={{ fontSize: '9px', color: '#999', marginTop: '4px' }}>
+            isHigherBetter: {String(metric.isHigherBetter)} (type: {typeof metric.isHigherBetter})
+            <br />
+            is_higher_better: {String(metric.is_higher_better)} (type: {typeof metric.is_higher_better})
+            <br />
+            Raw JSON: {JSON.stringify({isHigherBetter: metric.isHigherBetter, is_higher_better: metric.is_higher_better})}
+          </div>
         </Box>
         
         {metric.description && (
@@ -100,15 +109,22 @@ const MetricCard: React.FC<MetricCardProps> = ({ metric, onEdit, onDelete }) => 
         )}
         
         {metric.parameters && Object.keys(metric.parameters).length > 0 && (
-          <Box mt={2}>
+          <Box mt={2} sx={{ backgroundColor: '#f5f5f5', p: 1.5, borderRadius: 1 }}>
             <Typography variant="subtitle2" gutterBottom>
               パラメータ:
             </Typography>
-            {Object.entries(metric.parameters).map(([key, value]) => (
-              <Typography key={key} variant="body2" color="text.secondary">
-                {key}: {typeof value === 'object' ? JSON.stringify(value) : value}
-              </Typography>
-            ))}
+            <Box sx={{ 
+              fontFamily: 'monospace', 
+              fontSize: '0.85rem',
+              backgroundColor: '#f8f8f8',
+              p: 1,
+              borderRadius: 1,
+              border: '1px solid #e0e0e0',
+              maxHeight: '100px',
+              overflow: 'auto'
+            }}>
+              {JSON.stringify(metric.parameters, null, 2)}
+            </Box>
           </Box>
         )}
       </CardContent>

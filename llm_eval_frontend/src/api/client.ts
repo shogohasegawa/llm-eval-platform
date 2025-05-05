@@ -37,6 +37,18 @@ class ApiClient {
       (response) => {
         const method = response.config.method ? response.config.method.toUpperCase() : 'UNKNOWN';
         console.log(`API Response [${method}] ${response.config.url}:`, response.data);
+        
+        // デバッグ情報を追加
+        if (typeof response.data === 'object' && response.data !== null) {
+          console.log('Response data type:', typeof response.data);
+          console.log('Response data keys:', Object.keys(response.data));
+          console.log('Response data nested types:', 
+            Object.entries(response.data).map(([key, value]) => 
+              `${key}: ${typeof value}${Array.isArray(value) ? ` (Array[${(value as any[]).length}])` : ''}`
+            )
+          );
+        }
+        
         return response;
       },
       (error) => {
@@ -48,10 +60,16 @@ class ApiClient {
           console.error(`API Error [${method}] ${url}:`, error.response.data);
           console.error('Status:', error.response.status);
           console.error('Headers:', error.response.headers);
+          
+          // エラーメッセージをわかりやすく拡張
+          if (error.response.data && error.response.data.detail) {
+            error.message = `[${error.response.status}] ${error.response.data.detail}`;
+          }
         } else if (error.request) {
           // リクエストは送信されたがレスポンスがない場合
           console.error('API Request Error:', error.request);
           console.error('No response received. Check if the server is running.');
+          error.message = 'サーバーからの応答がありません。サーバーが実行中か確認してください。';
         } else {
           // リクエスト設定中にエラーが発生した場合
           console.error('API Config Error:', error.message);

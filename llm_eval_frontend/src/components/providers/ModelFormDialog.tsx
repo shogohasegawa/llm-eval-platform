@@ -52,7 +52,12 @@ const ModelFormDialog: React.FC<ModelFormDialogProps> = ({
   };
 
   // プロバイダデータの取得
-  const { data: providers, isLoading: isLoadingProviders } = useProviders();
+  const { data: providers, isLoading: isLoadingProviders, isError, error } = useProviders();
+  
+  // プロバイダデータのデバッグ
+  console.log('Model form - Providers data:', providers);
+  console.log('Model form - Loading providers:', isLoadingProviders);
+  console.log('Model form - Provider error:', isError, error);
 
   // フォームの状態
   const [formData, setFormData] = useState<ModelFormData>(initialData || defaultData);
@@ -199,11 +204,24 @@ const ModelFormDialog: React.FC<ModelFormDialogProps> = ({
       // 表示名が空の場合は、モデル名を使用
       const displayName = formData.displayName.trim() || formData.name;
       
-      onSubmit({
+      // 送信前データを確認
+      const submitData = {
         ...formData,
         displayName,
-        parameters
-      });
+        parameters,
+        providerId: formData.providerId, // 明示的に指定
+        isActive: !!formData.isActive, // ブール値に変換して送信
+        // バックエンドがスネークケースを期待する可能性があるため、両方のフォーマットで送信
+        provider_id: formData.providerId,
+        display_name: displayName,
+        is_active: !!formData.isActive,
+        api_key: formData.apiKey?.trim() || undefined
+      };
+      
+      console.log('モデル送信データ:', submitData);
+      console.log('選択されたプロバイダ:', selectedProvider);
+      
+      onSubmit(submitData);
     }
   };
 
@@ -224,6 +242,12 @@ const ModelFormDialog: React.FC<ModelFormDialogProps> = ({
                 label="プロバイダ"
                 disabled={isLoadingProviders || !!initialData}
               >
+                {isLoadingProviders && (
+                  <MenuItem disabled>読み込み中...</MenuItem>
+                )}
+                {!isLoadingProviders && providers && providers.length === 0 && (
+                  <MenuItem disabled>利用可能なプロバイダがありません</MenuItem>
+                )}
                 {providers?.map((provider) => (
                   <MenuItem key={provider.id} value={provider.id}>
                     {provider.name}
@@ -233,6 +257,11 @@ const ModelFormDialog: React.FC<ModelFormDialogProps> = ({
               {errors.providerId && <FormHelperText>{errors.providerId}</FormHelperText>}
               {initialData && (
                 <FormHelperText>編集時にプロバイダは変更できません</FormHelperText>
+              )}
+              {!initialData && !isLoadingProviders && (!providers || providers.length === 0) && (
+                <FormHelperText error>
+                  利用可能なプロバイダがありません。先にプロバイダを追加してください。
+                </FormHelperText>
               )}
             </FormControl>
           </Grid>
@@ -348,10 +377,12 @@ const ModelFormDialog: React.FC<ModelFormDialogProps> = ({
         <Button
           onClick={handleSubmit}
           variant="contained"
-          disabled={isSubmitting}
+          disabled={isSubmitting || (!providers || providers.length === 0) || !formData.providerId}
           startIcon={isSubmitting ? <CircularProgress size={20} /> : null}
         >
           {initialData ? '更新' : '追加'}
+          {!formData.providerId && providers && providers.length > 0 && ' (プロバイダを選択してください)'}
+          {(!providers || providers.length === 0) && ' (先にプロバイダを追加してください)'}
         </Button>
       </DialogActions>
     </Dialog>

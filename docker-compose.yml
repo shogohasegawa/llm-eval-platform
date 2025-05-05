@@ -12,14 +12,14 @@ services:
     volumes:
       - ./llm_eval_backend/src:/app/src
       - ./llm_eval_backend/results:/app/results
-      - ../datasets:/external_datasets # コンテナ外のデータセットディレクトリをマウント
+      - ./datasets:/external_datasets # コンテナ外のデータセットディレクトリをマウント（カレントディレクトリ基準の相対パス）
       - ./external_data:/external_data # コンテナ外のデータ保存用ディレクトリをマウント
     environment:
       - LLMEVAL_ENV=development
       - LLMEVAL_LOG_LEVEL=INFO
-      - LLMEVAL_LITELLM_BASE_URL=http://192.168.101.204:11434/api/generate
       - MLFLOW_TRACKING_URI=http://mlflow:5000
       - LLMEVAL_DB_PATH=/external_data/llm_eval.db # データベースファイルのパス
+      - TZ=Asia/Tokyo # タイムゾーン設定
     depends_on:
       - mlflow
     restart: unless-stopped
@@ -36,7 +36,9 @@ services:
       - MLFLOW_TRACKING_URI=http://localhost:5000
       - MLFLOW_BACKEND_STORE_URI=sqlite:///mlflow/mlflow.db
       - MLFLOW_DEFAULT_ARTIFACT_ROOT=file:///mlflow/artifacts
-    command: mlflow server --host 0.0.0.0
+      - GUNICORN_CMD_ARGS="--access-logfile - --workers 1 --threads 2 --timeout 60 --forwarded-allow-ips='*' --log-level=debug"
+      - ENABLE_CORS=true
+    command: mlflow server --host 0.0.0.0 --backend-store-uri sqlite:///mlflow/mlflow.db --default-artifact-root file:///mlflow/artifacts
     networks:
       - llm-eval-network
 
@@ -51,6 +53,8 @@ services:
       - ollama_data:/root/.ollama
     restart: unless-stopped
     runtime: nvidia # GPUサポート（Compose 2.3形式）
+    networks:
+      - llm-eval-network
 
   llm-leaderboard-app:
     build:
