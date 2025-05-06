@@ -1,6 +1,10 @@
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Query, Path
 from typing import Dict, Any, List, Optional, Union
-from datetime import datetime
+import datetime
+import time
+import json
+import traceback
+import logging
 
 from app.api.models import (
     EvaluationRequest, EvaluationResponse, MetricInfo, MetricsListResponse,
@@ -139,12 +143,47 @@ async def evaluate(
                     continue
                 flat_metrics[key] = value  # 例: "aio_0shot_char_f1": 0.11
 
-        # 3) バックグラウンドでMLflowへログ
-        background_tasks.add_task(
-            log_evaluation_results,
-            model_name=f"{provider_name}/{model_name}",
-            metrics=flat_metrics
-        )
+        # 3) バックグラウンドでMLflowへログ（デバッグ有効化）
+        try:
+            logger.info(f"📊 リクエスト処理完了: MLflowにロギングを開始します: {provider_name}/{model_name}")
+            logger.info(f"📊 メトリクスデータの例 (最大10件): {list(flat_metrics.items())[:10]}")
+            
+            # メトリクスデータのログファイルを作成（トラブルシューティング用）
+            metrics_log_file = f"/app/debug_metrics_{provider_name}_{model_name}_{int(time.time())}.json"
+            with open(metrics_log_file, "w") as f:
+                json.dump({
+                    "provider": provider_name,
+                    "model": model_name,
+                    "timestamp": datetime.datetime.now().isoformat(),
+                    "metrics": flat_metrics
+                }, f, indent=2)
+            logger.info(f"📊 メトリクスデータをログファイルに保存しました: {metrics_log_file}")
+            
+            # バックグラウンドタスクではなく直接実行してデバッグ（本番では戻す）
+            logging_result = await log_evaluation_results(
+                model_name=f"{provider_name}/{model_name}",
+                metrics=flat_metrics
+            )
+            logger.info(f"📊 MLflowロギング結果: {logging_result}")
+            
+            if not logging_result:
+                logger.error(f"❌ MLflowへのロギングが失敗しました: {provider_name}/{model_name}")
+        except Exception as e:
+            logger.error(f"❌❌❌ MLflowロギング中に例外が発生: {str(e)}", exc_info=True)
+            # エラーをファイルに記録
+            error_log_file = f"/app/mlflow_error_{provider_name}_{model_name}_{int(time.time())}.txt"
+            with open(error_log_file, "w") as f:
+                f.write(f"Error logging metrics for {provider_name}/{model_name}: {str(e)}\n\n")
+                import traceback
+                traceback.print_exc(file=f)
+            logger.error(f"❌ エラーログをファイルに保存しました: {error_log_file}")
+        
+        # 元のコード（現在は非活性）
+        # background_tasks.add_task(
+        #     log_evaluation_results,
+        #     model_name=f"{provider_name}/{model_name}",
+        #     metrics=flat_metrics
+        # )
 
         # 4) シンプルレスポンス返却
         return EvaluationResponse(

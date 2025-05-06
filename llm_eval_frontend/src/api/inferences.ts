@@ -113,8 +113,7 @@ export const inferencesApi = {
         modelId: undefined,
         maxTokens: undefined,
         topP: undefined,
-        nShots: undefined,
-        numSamples: undefined
+        nShots: undefined
       };
       
       console.log('Processed inference data:', processedData);

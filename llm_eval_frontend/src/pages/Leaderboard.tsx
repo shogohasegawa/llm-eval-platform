@@ -65,13 +65,13 @@ const Leaderboard: React.FC = () => {
 
   // APIサーバーのURLを取得（環境変数またはウィンドウロケーションから）
   const getApiUrl = () => {
-    const hostname = window.location.hostname;
-    return `http://${hostname}:8001`;
+    // 環境変数が設定されていればそれを使用、なければホスト名からURLを構築
+    const apiUrl = import.meta.env.VITE_API_BASE_URL || `http://${window.location.hostname}:8001`;
+    return apiUrl;
   };
 
   // MLflowへの直接アクセスURLを取得
   const getMlflowDirectUrl = () => {
-    // localhost時は8001のプロキシを使用する
     return `${getApiUrl()}/proxy-mlflow/`;
   };
 
@@ -82,7 +82,11 @@ const Leaderboard: React.FC = () => {
 
   // MLflow UIをiframeで表示するためのURL
   const getMlflowUiUrl = () => {
+    // MLflowのカスタムUIページのパスを返す
     return `${getApiUrl()}/mlflow-ui`;
+    
+    // 直接MLflowに接続する場合はこちらを使用（デバッグ用）
+    // return 'http://localhost:5000';
   };
 
   // iframeのonLoadハンドラ
@@ -105,16 +109,20 @@ const Leaderboard: React.FC = () => {
   useEffect(() => {
     const testMlflowConnection = async () => {
       try {
+        // HEADではなくGETメソッドを使用（多くのプロキシはHEADをサポートしていない）
         const response = await fetch(getMlflowProxyUrl(), { 
-          method: 'HEAD',
+          method: 'GET',
           headers: {
             'Cache-Control': 'no-cache'
           }
         });
         if (!response.ok) {
           setIframeError(`MLflowへの接続に問題があります（ステータス: ${response.status}）`);
+        } else {
+          console.log('MLflow接続テスト成功:', response.status);
         }
       } catch (err) {
+        console.error('MLflow接続テストエラー:', err);
         setIframeError('MLflowサーバーに接続できません。サーバーが起動していることを確認してください。');
       }
     };
@@ -150,6 +158,14 @@ const Leaderboard: React.FC = () => {
             onClick={() => window.location.reload()}
           >
             再読み込み
+          </Button>
+          
+          <Button
+            variant="outlined"
+            color="secondary"
+            onClick={() => openExternalLink('http://localhost:5000')}
+          >
+            MLflow直接アクセス
           </Button>
         </Box>
       </Box>

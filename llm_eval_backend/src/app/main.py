@@ -122,6 +122,133 @@ async def root():
     logger.debug("ルートエンドポイントへのアクセス")
     return {"message": "LLM Evaluation Platform API"}
 
+@app.get("/debug-mlflow", response_class=HTMLResponse)
+async def debug_mlflow():
+    """
+    MLflowデバッグ用のHTMLページを返す
+    """
+    logger.info("MLflowデバッグページへのアクセス")
+    html_content = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>MLflow Debug Page</title>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+            body, html {
+                margin: 0;
+                padding: 0;
+                font-family: Arial, sans-serif;
+            }
+            .container {
+                max-width: 1200px;
+                margin: 0 auto;
+                padding: 20px;
+            }
+            h1 {
+                color: #4CAF50;
+            }
+            .server-group {
+                margin-bottom: 20px;
+                padding: 15px;
+                border: 1px solid #ddd;
+                border-radius: 5px;
+            }
+            .button {
+                background-color: #4CAF50;
+                color: white;
+                border: none;
+                padding: 10px 15px;
+                text-decoration: none;
+                display: inline-block;
+                margin: 10px 5px;
+                cursor: pointer;
+                border-radius: 4px;
+            }
+            .status {
+                margin-top: 10px;
+                padding: 10px;
+                background-color: #f9f9f9;
+                border-radius: 5px;
+            }
+            iframe {
+                width: 100%;
+                height: 500px;
+                border: 1px solid #ddd;
+                border-radius: 5px;
+                margin-top: 20px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>MLflow デバッグページ</h1>
+            
+            <div class="server-group">
+                <h2>MLflow 直接アクセス</h2>
+                <p>MLflowサーバーに直接アクセスします (ポート5000)</p>
+                <a href="http://localhost:5000" target="_blank" class="button">Open MLflow (Direct)</a>
+                <div class="status" id="direct-status">Checking...</div>
+            </div>
+            
+            <div class="server-group">
+                <h2>MLflow プロキシアクセス</h2>
+                <p>APIサーバー経由でMLflowにアクセスします (ポート8001)</p>
+                <a href="/proxy-mlflow/" target="_blank" class="button">Open MLflow (Proxy)</a>
+                <div class="status" id="proxy-status">Checking...</div>
+            </div>
+            
+            <div class="server-group">
+                <h2>MLflow UI (iframe)</h2>
+                <iframe src="/proxy-mlflow/" id="mlflow-frame"></iframe>
+            </div>
+            
+            <div class="server-group">
+                <h2>API テスト</h2>
+                <a href="/api/v1/evaluations/metrics" target="_blank" class="button">Get Metrics</a>
+                <div class="status" id="api-status">API status...</div>
+            </div>
+        </div>
+        
+        <script>
+            // サーバー状態をチェック
+            async function checkServer(url, statusId) {
+                try {
+                    const startTime = new Date().getTime();
+                    const response = await fetch(url);
+                    const endTime = new Date().getTime();
+                    const duration = endTime - startTime;
+                    
+                    document.getElementById(statusId).innerHTML = 
+                        `Status: ${response.status} ${response.statusText}<br>` +
+                        `Response time: ${duration}ms<br>` +
+                        `Content-Type: ${response.headers.get('content-type')}`;
+                    
+                    if (response.headers.get('content-type')?.includes('json')) {
+                        const data = await response.json();
+                        document.getElementById(statusId).innerHTML += 
+                            `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+                    }
+                } catch (e) {
+                    document.getElementById(statusId).innerHTML = 
+                        `Error: ${e.message}`;
+                }
+            }
+            
+            // 初期化
+            window.onload = function() {
+                // サーバー状態をチェック
+                checkServer('http://localhost:5000', 'direct-status');
+                checkServer('/proxy-mlflow/', 'proxy-status');
+                checkServer('/api/v1/evaluations/metrics', 'api-status');
+            };
+        </script>
+    </body>
+    </html>
+    """
+    return html_content
+
 # MLflow UI をiframeで表示するページ
 # MLflowページの任意のパスへのアクセスをサポートするためのリダイレクトハンドラー
 @app.get("/mlflow/{path:path}")
@@ -301,9 +428,9 @@ async def mlflow_ui():
                             document.getElementById('mlflow-status').textContent = "接続エラー: " + e.message;
                         }
                         
-                        // プロキシアクセスをテスト
+                        // プロキシアクセスをテスト（ajax-apiエンドポイントを使用）
                         try {
-                            const proxyResp = await fetch('/proxy-mlflow/api/2.0/mlflow/experiments/list', {
+                            const proxyResp = await fetch('/proxy-mlflow/ajax-api/2.0/mlflow/experiments/search?max_results=100', {
                                 method: 'GET'
                             });
                             document.getElementById('proxy-status').textContent = 

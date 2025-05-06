@@ -339,6 +339,65 @@ async def execute_inference_evaluation(
                 "error": "メトリクスの計算に失敗しました。データセットとモデルの組み合わせが適切か確認してください。"
             })
         else:
+            # MLflowにメトリクスをログ
+            try:
+                # ログ用の完全なモデル名を構築
+                full_model_name = f"{provider_name}/{model_name}"
+                logger.info(f"🔄 推論 {inference_id} の評価結果をMLflowに記録します: {full_model_name}")
+                
+                # メトリクスサンプルをログ
+                metrics_sample = list(flat_metrics.items())[:5]
+                logger.info(f"📊 メトリクスの例 (5件): {metrics_sample}")
+                
+                # メトリクスデータのログファイルを作成（トラブルシューティング用）
+                from app.utils.logging import log_evaluation_results
+                import time
+                metrics_log_file = f"/app/inference_metrics_{provider_name}_{model_name}_{int(time.time())}.json"
+                with open(metrics_log_file, "w") as f:
+                    json.dump({
+                        "inference_id": inference_id,
+                        "provider": provider_name,
+                        "model": model_name,
+                        "timestamp": datetime.now().isoformat(),
+                        "metrics": flat_metrics
+                    }, f, indent=2)
+                logger.info(f"📊 推論メトリクスデータをログファイルに保存しました: {metrics_log_file}")
+                
+                # MLflowへのロギング実行（デバッグ詳細付き）
+                from app.utils.logging import log_evaluation_results
+                
+                # メトリクスのタイプを確認（デバッグ用）
+                for key, value in flat_metrics.items():
+                    logger.info(f"📊 メトリクスの型確認: {key}={value} (type: {type(value).__name__})")
+                    
+                    # 値が数値でない場合は補正
+                    if not isinstance(value, (int, float)):
+                        try:
+                            flat_metrics[key] = float(value)
+                            logger.info(f"🔄 メトリクスを数値型に変換: {key}={flat_metrics[key]}")
+                        except (ValueError, TypeError):
+                            logger.warning(f"⚠️ メトリクス {key} を数値に変換できません: {value}")
+                
+                # MLflowにログ記録
+                logging_result = await log_evaluation_results(
+                    model_name=full_model_name,
+                    metrics=flat_metrics
+                )
+                
+                logger.info(f"✅ MLflowへのログ記録結果: {logging_result}")
+                
+            except Exception as mlflow_error:
+                error_message = str(mlflow_error)
+                logger.error(f"❌ MLflowへのログ記録中にエラーが発生: {error_message}", exc_info=True)
+                
+                # エラーをファイルに記録
+                import traceback
+                error_log_file = f"/app/inference_mlflow_error_{provider_name}_{model_name}_{int(time.time())}.txt"
+                with open(error_log_file, "w") as f:
+                    f.write(f"Error logging metrics for inference {inference_id} ({provider_name}/{model_name}): {error_message}\n\n")
+                    traceback.print_exc(file=f)
+                logger.error(f"❌ MLflowエラーログをファイルに保存しました: {error_log_file}")
+            
             # 推論のステータスを完了に更新（メトリクスあり）
             inference_repo.update_inference(inference_id, {
                 "status": InferenceStatus.COMPLETED,

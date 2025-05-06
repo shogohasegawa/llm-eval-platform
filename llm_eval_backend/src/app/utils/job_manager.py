@@ -6,8 +6,10 @@
 import asyncio
 import json
 import logging
+import time
+import traceback
 from typing import Dict, Any, Optional, List
-from datetime import datetime
+import datetime
 
 from app.api.models import EvaluationRequest, JobStatus, JobLogLevel
 from app.utils.db.jobs import get_job_repository
@@ -139,10 +141,71 @@ class JobManager:
                 )
             
             # MLflowへログ
-            await log_evaluation_results(
-                model_name=f"{provider_name}/{model_name}",
-                metrics=flat_metrics
-            )
+            if flat_metrics and len(flat_metrics) > 0:
+                try:
+                    # デバッグ用ログ - メトリクスデータの例を出力
+                    metrics_sample = list(flat_metrics.items())[:5]
+                    logger.info(f"📊 ジョブマネージャー: MLflowへのメトリクスログを開始します - モデル: {provider_name}/{model_name}")
+                    logger.info(f"📊 メトリクスデータの例 (5件): {metrics_sample}")
+                    
+                    # メトリクスデータのログファイルを作成（トラブルシューティング用）
+                    metrics_log_file = f"/app/job_metrics_{provider_name}_{model_name}_{int(time.time())}.json"
+                    with open(metrics_log_file, "w") as f:
+                        json.dump({
+                            "provider": provider_name,
+                            "model": model_name,
+                            "timestamp": datetime.datetime.now().isoformat(),
+                            "metrics": flat_metrics
+                        }, f, indent=2)
+                    logger.info(f"📊 ジョブメトリクスデータをログファイルに保存しました: {metrics_log_file}")
+                    
+                    # MLflowへのロギング実行
+                    logging_result = await log_evaluation_results(
+                        model_name=f"{provider_name}/{model_name}",
+                        metrics=flat_metrics
+                    )
+                    
+                    # ログ結果をジョブログに記録
+                    if logging_result:
+                        self.job_repo.add_job_log(
+                            job_id=job_id,
+                            log_level=JobLogLevel.INFO,
+                            message=f"MLflowへのメトリクスのロギングが完了しました（{len(flat_metrics)}個のメトリクス）"
+                        )
+                        logger.info(f"✅ MLflowロギング成功: {provider_name}/{model_name}")
+                    else:
+                        self.job_repo.add_job_log(
+                            job_id=job_id,
+                            log_level=JobLogLevel.WARNING,
+                            message="MLflowへのロギングに問題が発生しました"
+                        )
+                        logger.warning(f"⚠️ MLflowロギング問題: {provider_name}/{model_name}")
+                except Exception as e:
+                    # MLflowロギングエラーはジョブ全体を失敗にはしない
+                    error_msg = str(e)
+                    logger.error(f"❌ MLflowロギングエラー: {error_msg}")
+                    
+                    # エラーをファイルに記録
+                    error_log_file = f"/app/job_mlflow_error_{provider_name}_{model_name}_{int(time.time())}.txt"
+                    with open(error_log_file, "w") as f:
+                        f.write(f"Error logging metrics for {provider_name}/{model_name}: {error_msg}\n\n")
+                        import traceback
+                        traceback.print_exc(file=f)
+                    logger.error(f"❌ ジョブエラーログをファイルに保存しました: {error_log_file}")
+                    
+                    self.job_repo.add_job_log(
+                        job_id=job_id,
+                        log_level=JobLogLevel.ERROR,
+                        message=f"MLflowへのロギング中にエラーが発生: {error_msg}"
+                    )
+            else:
+                # メトリクスがない場合はログを記録するだけ
+                logger.warning(f"MLflowへのロギングをスキップ: メトリクスがありません - モデル: {provider_name}/{model_name}")
+                self.job_repo.add_job_log(
+                    job_id=job_id,
+                    log_level=JobLogLevel.WARNING,
+                    message="メトリクスが空のためMLflowへのロギングをスキップしました"
+                )
             
             # ジョブ完了ログ
             self.job_repo.add_job_log(
