@@ -159,14 +159,6 @@ const Leaderboard: React.FC = () => {
           >
             再読み込み
           </Button>
-          
-          <Button
-            variant="outlined"
-            color="secondary"
-            onClick={() => openExternalLink('http://localhost:5000')}
-          >
-            MLflow直接アクセス
-          </Button>
         </Box>
       </Box>
 
