@@ -124,14 +124,40 @@ class JobManager:
                 additional_params=additional_params
             )
             
-            # フラットなメトリクス辞書を作成
+            # フラットなメトリクス辞書を作成（n_shots情報を含める）
             flat_metrics: Dict[str, float] = {}
+            n_shots_value = request.n_shots[0] if request.n_shots and len(request.n_shots) > 0 else 0
+            n_shots_suffix = f"_{n_shots_value}shot"
+            
+            # ステップ情報を保持する辞書を追加
+            n_shots_step_values = {}
+            
             for ds, ds_res in results_full.get("results", {}).items():
                 details = ds_res.get("details", {})
                 for key, value in details.items():
                     if key.endswith("_details") or key.endswith("_error_rate"):
                         continue
-                    flat_metrics[key] = value  # 例: "aio_0shot_char_f1": 0.11
+                    
+                    # 2つのメトリクス名形式を使用
+                    # 1. オリジナルのメトリクス名（同じランにステップ付きで記録）
+                    # 2. n_shots情報を含む完全名（バックアップと単体での表示用）
+                    ds_name = ds.split('/')[-1].replace('.json', '')  # データセット名を抽出
+                    
+                    # オリジナルのメトリクス名
+                    original_metric_name = f"{ds_name}_{key}"
+                    
+                    # n_shots情報を含む完全名
+                    full_metric_name = f"{ds_name}{n_shots_suffix}_{key}"
+                    
+                    # 両方の形式でメトリクスを記録
+                    flat_metrics[original_metric_name] = value  # ステップで区別して記録される
+                    flat_metrics[full_metric_name] = value      # 固有名で区別
+                    
+                    # ステップ値として使用するn_shots値を記録（MLflow APIに渡すため）
+                    n_shots_step_values[original_metric_name] = n_shots_value
+                    
+                    # ログでメトリクス名の変換を記録
+                    logger.info(f"メトリクス名変換: {key} → {original_metric_name}(step={n_shots_value}) / {full_metric_name} = {value}")
                 
                 # データセット完了ログ
                 self.job_repo.add_job_log(
@@ -139,6 +165,10 @@ class JobManager:
                     log_level=JobLogLevel.INFO,
                     message=f"データセット {ds} の評価が完了しました"
                 )
+                
+            # ステップ情報を一時的にメトリクスに追加（MLflowに送る前に削除される）
+            # これはMLflow APIに渡す目的で使用され、フロントエンドには返されない
+            flat_metrics["n_shots_step_values"] = n_shots_step_values
             
             # MLflowへログ
             if flat_metrics and len(flat_metrics) > 0:

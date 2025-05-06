@@ -303,8 +303,8 @@ async def execute_inference_evaluation(
     inference_repo = get_inference_repository()
     
     try:
-        # 推論のステータスを更新
-        inference_repo.update_inference(inference_id, {"status": InferenceStatus.RUNNING, "progress": 0})
+        # 推論のステータスを更新（進捗は表示しない）
+        inference_repo.update_inference(inference_id, {"status": InferenceStatus.RUNNING, "progress": -1})
         
         # 追加パラメータを準備（プロバイダごとのデフォルト設定を適用）
         additional_params = get_provider_options(provider_name)
@@ -319,14 +319,78 @@ async def execute_inference_evaluation(
             additional_params=additional_params
         )
         
-        # フラットなメトリクス辞書を作成
-        flat_metrics: Dict[str, float] = {}
+        # 結果をJSONファイルに保存
+        import os
+        import time
+        results_dir = "/app/results"
+        if not os.path.exists(results_dir):
+            os.makedirs(results_dir)
+            
+        timestamp = int(time.time())
+        # 推論IDを含むディレクトリを作成
+        inference_dir = f"{results_dir}/{inference_id}"
+        if not os.path.exists(inference_dir):
+            os.makedirs(inference_dir)
+            
+        # 詳細な結果を含むJSONファイル
+        results_filename = f"{inference_dir}/results_{timestamp}.json"
+        with open(results_filename, "w", encoding="utf-8") as f:
+            json.dump(results_full, f, ensure_ascii=False, indent=2)
+            
+        # 推論自体の情報も保存
+        inference_filename = f"{inference_dir}/inference.json"
+        with open(inference_filename, "w", encoding="utf-8") as f:
+            inference_info = {
+                "inference_id": inference_id,
+                "provider": provider_name,
+                "model": model_name,
+                "timestamp": datetime.now().isoformat(),
+                "evaluation_request": evaluation_request.dict(),
+                "results_file": results_filename
+            }
+            json.dump(inference_info, f, ensure_ascii=False, indent=2)
+        
+        logger.info(f"推論結果をJSONファイルに保存しました: {results_filename}")
+        logger.info(f"推論情報をJSONファイルに保存しました: {inference_filename}")
+        
+        # デバッグ用：推論結果ファイルへのアクセスパスを記録
+        n_shots_value = evaluation_request.n_shots[0] if evaluation_request.n_shots and len(evaluation_request.n_shots) > 0 else 0
+        inference_repo.update_inference(inference_id, {
+            "description": f"最新の推論結果ファイル: {results_filename}\nモデル: {provider_name}/{model_name}, n_shots: {n_shots_value}"
+        })
+        
+        # フラットなメトリクス辞書を作成（n_shots情報を含める）
+        flat_metrics: Dict[str, Any] = {}
+        n_shots_value = evaluation_request.n_shots[0] if evaluation_request.n_shots and len(evaluation_request.n_shots) > 0 else 0
+        n_shots_suffix = f"_{n_shots_value}shot"
+        
+        # 新しいベストプラクティス: n_shots_value をメトリクス辞書に追加して、MLflowの子ラン作成に使用
+        flat_metrics["n_shots_value"] = n_shots_value
+        
         for ds, ds_res in results_full.get("results", {}).items():
             details = ds_res.get("details", {})
             for key, value in details.items():
                 if key.endswith("_details") or key.endswith("_error_rate"):
                     continue
-                flat_metrics[key] = value
+                
+                # データセット名から余分な情報を除去
+                original_ds_name = ds.split('/')[-1].replace('.json', '')
+                
+                # n_shotサフィックスがあれば取り除く（すでに含まれている場合）
+                ds_name = original_ds_name
+                for shot_suffix in ["_0shot", "_1shot", "_2shot", "_3shot", "_4shot", "_5shot"]:
+                    if shot_suffix in ds_name:
+                        ds_name = ds_name.replace(shot_suffix, "")
+                        break
+                
+                # メトリクス名は「データセット名_nshot_指標名」の形式
+                metric_name = f"{ds_name}_{n_shots_value}shot_{key}"
+                
+                # シンプルに1つのメトリクス名を使用
+                flat_metrics[metric_name] = value
+                
+                # n_shots_value をメトリクス辞書に保存（MLflowログ用）
+                flat_metrics["n_shots_value"] = n_shots_value
         
         # メトリクスが空の場合は警告
         if not flat_metrics:
@@ -341,9 +405,10 @@ async def execute_inference_evaluation(
         else:
             # MLflowにメトリクスをログ
             try:
-                # ログ用の完全なモデル名を構築
+                # ログ用の完全なモデル名を構築（モデル名にはn_shots情報を含めない - 同一モデルの異なるn_shot設定を同じランに記録するため）
                 full_model_name = f"{provider_name}/{model_name}"
-                logger.info(f"🔄 推論 {inference_id} の評価結果をMLflowに記録します: {full_model_name}")
+                n_shots_value = evaluation_request.n_shots[0] if evaluation_request.n_shots and len(evaluation_request.n_shots) > 0 else 0
+                logger.info(f"🔄 推論 {inference_id} の評価結果をMLflowに記録します: {full_model_name} (n_shots: {n_shots_value})")
                 
                 # メトリクスサンプルをログ
                 metrics_sample = list(flat_metrics.items())[:5]
@@ -352,12 +417,14 @@ async def execute_inference_evaluation(
                 # メトリクスデータのログファイルを作成（トラブルシューティング用）
                 from app.utils.logging import log_evaluation_results
                 import time
-                metrics_log_file = f"/app/inference_metrics_{provider_name}_{model_name}_{int(time.time())}.json"
+                metrics_log_file = f"/app/inference_metrics_{provider_name}_{model_name}{n_shots_suffix}_{int(time.time())}.json"
                 with open(metrics_log_file, "w") as f:
                     json.dump({
                         "inference_id": inference_id,
                         "provider": provider_name,
                         "model": model_name,
+                        "n_shots": n_shots_value,
+                        "n_shots_suffix": n_shots_suffix,
                         "timestamp": datetime.now().isoformat(),
                         "metrics": flat_metrics
                     }, f, indent=2)
@@ -377,6 +444,9 @@ async def execute_inference_evaluation(
                             logger.info(f"🔄 メトリクスを数値型に変換: {key}={flat_metrics[key]}")
                         except (ValueError, TypeError):
                             logger.warning(f"⚠️ メトリクス {key} を数値に変換できません: {value}")
+                
+                # n_shotsの情報をログ
+                logger.info(f"📊 メトリクス名に追加されたn_shots情報: {n_shots_suffix}")
                 
                 # MLflowにログ記録
                 logging_result = await log_evaluation_results(
@@ -843,4 +913,204 @@ async def get_inference_results(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"推論結果取得エラー: {str(e)}"
+        )
+        
+
+@router.get("/{inference_id}/detail", response_model=dict)
+async def get_inference_detail(
+    inference_id: str = Path(..., description="推論ID")
+):
+    """
+    特定の推論の詳細情報を取得します。
+    
+    Args:
+        inference_id: 推論ID
+        
+    Returns:
+        dict: 推論の詳細情報（基本情報、データセット情報、評価結果などを含む）
+    """
+    try:
+        # リポジトリから推論を取得
+        inference_repo = get_inference_repository()
+        inference_db = inference_repo.get_inference_by_id(inference_id)
+        
+        if not inference_db:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"推論ID '{inference_id}' が見つかりません"
+            )
+        
+        # プロバイダとモデル情報の取得
+        provider_repo = get_provider_repository()
+        model_repo = get_model_repository()
+        
+        provider = provider_repo.get_provider_by_id(inference_db["provider_id"])
+        model = model_repo.get_model_by_id(inference_db["model_id"])
+        
+        # 結果のサンプルを取得（最大10件）
+        results_db = inference_repo.get_inference_results(inference_id, limit=10)
+        
+        # 結果をAPI応答形式に変換
+        results = []
+        for res in results_db:
+            results.append({
+                "id": res["id"],
+                "input": res["input"],
+                "expected_output": res.get("expected_output"),
+                "actual_output": res["actual_output"],
+                "metrics": res.get("metrics"),
+                "latency": res.get("latency"),
+                "token_count": res.get("token_count")
+            })
+            
+        # 保存されたJSONファイルの取得を試みる
+        import os
+        inference_json_path = f"/app/results/{inference_id}/inference.json"
+        results_json_data = None
+        saved_results_path = None
+        
+        if os.path.exists(inference_json_path):
+            try:
+                with open(inference_json_path, "r", encoding="utf-8") as f:
+                    inference_info = json.load(f)
+                    saved_results_path = inference_info.get("results_file")
+                    
+                if saved_results_path and os.path.exists(saved_results_path):
+                    with open(saved_results_path, "r", encoding="utf-8") as f:
+                        results_json_data = json.load(f)
+                        logger.info(f"保存されたJSON結果ファイルを読み込みました: {saved_results_path}")
+            except Exception as e:
+                logger.error(f"JSON結果ファイルの読み込みエラー: {str(e)}", exc_info=True)
+        
+        # パラメータ情報
+        parameters = inference_db.get("parameters", {})
+        
+        # 推論結果に関する追加統計を計算
+        results_summary = {
+            "processed_items": len(inference_db.get("results", [])),
+            "sample_results": results
+        }
+        
+        # 成功数とエラー数をカウント
+        success_count = 0
+        error_count = 0
+        total_latency = 0
+        total_tokens = 0
+        
+        for result in inference_db.get("results", []):
+            if result.get("error"):
+                error_count += 1
+            else:
+                success_count += 1
+                
+            if result.get("latency"):
+                total_latency += result.get("latency", 0)
+                
+            if result.get("token_count"):
+                total_tokens += result.get("token_count", 0)
+        
+        # 平均を計算
+        results_count = len(inference_db.get("results", []))
+        avg_latency = total_latency / results_count if results_count > 0 else 0
+        avg_tokens = total_tokens / results_count if results_count > 0 else 0
+        
+        # サマリーに追加
+        results_summary.update({
+            "success_count": success_count,
+            "error_count": error_count,
+            "avg_latency": avg_latency,
+            "avg_tokens": avg_tokens
+        })
+        
+        # データセット情報にサンプル数を追加
+        dataset_name = inference_db["dataset_id"].split('/')[-1].replace('.json', '')
+        
+        # 詳細情報の構築
+        detail = {
+            "basic_info": {
+                "id": inference_db["id"],
+                "name": inference_db["name"],
+                "description": inference_db.get("description"),
+                "status": inference_db["status"],
+                "progress": inference_db["progress"],
+                "created_at": inference_db["created_at"],
+                "updated_at": inference_db["updated_at"],
+                "completed_at": inference_db.get("completed_at")
+            },
+            "model_info": {
+                "provider_id": inference_db["provider_id"],
+                "provider_name": provider["name"] if provider else None,
+                "provider_type": provider["type"] if provider else None,
+                "model_id": inference_db["model_id"],
+                "model_name": model["name"] if model else None,
+                "model_display_name": model.get("display_name") if model else None,
+                "max_tokens": parameters.get("max_tokens", 512),
+                "temperature": parameters.get("temperature", 0.7),
+                "top_p": parameters.get("top_p", 1.0)
+            },
+            "dataset_info": {
+                "name": dataset_name,
+                "dataset_id": inference_db["dataset_id"],
+                "item_count": results_count,
+                "sample_count": parameters.get("num_samples", 100),
+                "n_shots": parameters.get("n_shots", 0)
+            },
+            "results_summary": results_summary,
+            "evaluation_metrics": inference_db.get("metrics", {})
+        }
+        
+        # JSONファイルから読み込んだ詳細データがあれば追加
+        if results_json_data:
+            # JSONから詳細な結果を追加
+            detail["json_results"] = results_json_data
+            
+            # 結果からデータセット詳細を抽出
+            if "results" in results_json_data:
+                dataset_details = {}
+                for ds_name, ds_result in results_json_data["results"].items():
+                    # データセットの詳細情報（サンプル数など）
+                    if "dataset_info" in ds_result:
+                        dataset_details[ds_name] = ds_result["dataset_info"]
+                    
+                    # 詳細な評価結果（メトリクスの詳細など）
+                    if "details" in ds_result:
+                        # 既存のメトリクスを拡張
+                        for metric_name, metric_value in ds_result["details"].items():
+                            # _detailsで終わるものだけを追加（詳細データ）
+                            if metric_name.endswith("_details") and isinstance(metric_value, dict):
+                                if "metrics_details" not in detail:
+                                    detail["metrics_details"] = {}
+                                detail["metrics_details"][metric_name] = metric_value
+                
+                if dataset_details:
+                    detail["dataset_details"] = dataset_details
+        
+        # エラー情報があれば追加
+        if inference_db.get("error"):
+            detail["error"] = inference_db["error"]
+            
+        # 評価結果のパフォーマンスサマリーを追加（存在する場合）
+        if inference_db.get("metrics"):
+            metrics = inference_db["metrics"]
+            accuracy_metrics = {k: v for k, v in metrics.items() if "accuracy" in k.lower()}
+            f1_metrics = {k: v for k, v in metrics.items() if "f1" in k.lower()}
+            latency_metrics = {k: v for k, v in metrics.items() if "latency" in k.lower()}
+            
+            detail["performance_summary"] = {
+                "accuracy": accuracy_metrics,
+                "f1_score": f1_metrics,
+                "latency": latency_metrics,
+                "other_metrics": {k: v for k, v in metrics.items() 
+                                 if k not in accuracy_metrics and k not in f1_metrics and k not in latency_metrics}
+            }
+        
+        return detail
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"推論詳細取得エラー: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"推論詳細取得エラー: {str(e)}"
         )

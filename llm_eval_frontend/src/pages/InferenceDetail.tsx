@@ -25,7 +25,7 @@ import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import StopIcon from '@mui/icons-material/Stop';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useInference, useInferenceResults, useRunInference, useStopInference, useExportInferenceResults } from '../hooks/useInferences';
+import { useInference, useInferenceResults, useRunInference, useStopInference, useExportInferenceResults, useInferenceDetail } from '../hooks/useInferences';
 import { useDatasetByName } from '../hooks/useDatasets';
 import { useProvider, useModel } from '../hooks/useProviders';
 import { InferenceResult } from '../types/inference';
@@ -65,6 +65,15 @@ const InferenceDetail: React.FC = () => {
     error: resultsError,
     refetch: refetchResults
   } = useInferenceResults(inferenceId);
+  
+  // 推論詳細情報の取得
+  const {
+    data: inferenceDetail,
+    isLoading: isLoadingDetail,
+    isError: isErrorDetail,
+    error: detailError,
+    refetch: refetchDetail
+  } = useInferenceDetail(inferenceId);
 
   // 関連データの取得
   const { data: dataset } = useDatasetByName(inference?.datasetId || '');
@@ -84,6 +93,7 @@ const InferenceDetail: React.FC = () => {
       intervalId = setInterval(() => {
         refetchInference();
         refetchResults();
+        refetchDetail();
       }, pollingInterval);
     }
 
@@ -92,7 +102,7 @@ const InferenceDetail: React.FC = () => {
         clearInterval(intervalId);
       }
     };
-  }, [inference?.status, refetchInference, refetchResults]);
+  }, [inference?.status, refetchInference, refetchResults, refetchDetail]);
 
   // エラーハンドリング
   if (inferenceError) {
@@ -101,6 +111,10 @@ const InferenceDetail: React.FC = () => {
 
   if (resultsError) {
     setError(`推論結果の取得に失敗しました: ${resultsError.message}`);
+  }
+  
+  if (detailError) {
+    setError(`推論詳細情報の取得に失敗しました: ${detailError.message}`);
   }
 
   // タブの変更ハンドラ
@@ -239,9 +253,12 @@ const InferenceDetail: React.FC = () => {
               }}
             />
             {inference.status === 'running' && (
-              <Typography variant="body1">
-                進捗: {inference.progress}%
-              </Typography>
+              <Box display="flex" alignItems="center">
+                <CircularProgress size={20} sx={{ mr: 1 }} />
+                <Typography variant="body1">
+                  処理中...
+                </Typography>
+              </Box>
             )}
           </Box>
         </Box>
@@ -284,7 +301,7 @@ const InferenceDetail: React.FC = () => {
 
       {inference.status === 'running' && (
         <Box sx={{ width: '100%', mb: 3 }}>
-          <LinearProgress variant="determinate" value={inference.progress} />
+          <LinearProgress variant="indeterminate" />
         </Box>
       )}
 
@@ -333,63 +350,392 @@ const InferenceDetail: React.FC = () => {
       {/* 結果タブ */}
       {tabValue === 1 && (
         <>
-          {isLoadingResults ? (
+          {isLoadingDetail || isLoadingResults ? (
             <Box display="flex" justifyContent="center" my={4}>
               <CircularProgress />
             </Box>
-          ) : isErrorResults ? (
+          ) : isErrorDetail || isErrorResults ? (
             <Alert severity="error" sx={{ mb: 3 }}>
               推論結果の取得中にエラーが発生しました。
             </Alert>
-          ) : results && results.length > 0 ? (
-            <TableContainer component={Paper}>
-              <Table sx={{ minWidth: 650 }} aria-label="推論結果テーブル">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>入力</TableCell>
-                    <TableCell>期待される出力</TableCell>
-                    <TableCell>実際の出力</TableCell>
-                    <TableCell>レイテンシ</TableCell>
-                    <TableCell>トークン数</TableCell>
-                    <TableCell>エラー</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {results.map((result) => (
-                    <TableRow key={result.id}>
-                      <TableCell sx={{ maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {result.input}
-                      </TableCell>
-                      <TableCell sx={{ maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {result.expectedOutput || '-'}
-                      </TableCell>
-                      <TableCell sx={{ maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {result.actualOutput || '-'}
-                      </TableCell>
-                      <TableCell>
-                        {result.latency ? `${result.latency}ms` : '-'}
-                      </TableCell>
-                      <TableCell>
-                        {result.tokenCount || '-'}
-                      </TableCell>
-                      <TableCell>
-                        {result.error || '-'}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
           ) : (
-            <Paper sx={{ p: 3, textAlign: 'center' }}>
-              <Typography variant="body1" color="text.secondary">
-                {inference.status === 'pending'
-                  ? '推論はまだ実行されていません。「実行」ボタンをクリックして推論を開始してください。'
-                  : inference.status === 'running'
-                    ? '推論を実行中です。結果が生成されるまでお待ちください。'
-                    : '推論結果がありません。'}
-              </Typography>
-            </Paper>
+            <Grid container spacing={3}>
+              {/* 基本情報 */}
+              {inferenceDetail?.basic_info && (
+                <Grid item xs={12}>
+                  <Card>
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom>
+                        基本情報
+                      </Typography>
+                      <Grid container spacing={2}>
+                        <Grid item xs={4} sm={3} md={2}>
+                          <Typography variant="subtitle2">名前</Typography>
+                        </Grid>
+                        <Grid item xs={8} sm={9} md={10}>
+                          <Typography variant="body1">{inferenceDetail.basic_info.name}</Typography>
+                        </Grid>
+                        
+                        <Grid item xs={4} sm={3} md={2}>
+                          <Typography variant="subtitle2">ステータス</Typography>
+                        </Grid>
+                        <Grid item xs={8} sm={9} md={10}>
+                          <Chip
+                            label={getStatusText(inferenceDetail.basic_info.status)}
+                            size="small"
+                            sx={{
+                              backgroundColor: getStatusColor(inferenceDetail.basic_info.status),
+                              color: 'white'
+                            }}
+                          />
+                        </Grid>
+                        
+                        <Grid item xs={4} sm={3} md={2}>
+                          <Typography variant="subtitle2">作成日</Typography>
+                        </Grid>
+                        <Grid item xs={8} sm={9} md={10}>
+                          <Typography variant="body1">
+                            {new Date(inferenceDetail.basic_info.created_at).toLocaleString()}
+                          </Typography>
+                        </Grid>
+                        
+                        {inferenceDetail.basic_info.completed_at && (
+                          <>
+                            <Grid item xs={4} sm={3} md={2}>
+                              <Typography variant="subtitle2">完了日</Typography>
+                            </Grid>
+                            <Grid item xs={8} sm={9} md={10}>
+                              <Typography variant="body1">
+                                {new Date(inferenceDetail.basic_info.completed_at).toLocaleString()}
+                              </Typography>
+                            </Grid>
+                          </>
+                        )}
+                      </Grid>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              )}
+              
+              {/* モデル情報 */}
+              {inferenceDetail?.model_info && (
+                <Grid item xs={12} md={6}>
+                  <Card>
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom>
+                        モデル情報
+                      </Typography>
+                      <Grid container spacing={2}>
+                        <Grid item xs={4}>
+                          <Typography variant="subtitle2">プロバイダ</Typography>
+                        </Grid>
+                        <Grid item xs={8}>
+                          <Typography variant="body1">{inferenceDetail.model_info.provider_name || '-'}</Typography>
+                        </Grid>
+                        
+                        <Grid item xs={4}>
+                          <Typography variant="subtitle2">モデル</Typography>
+                        </Grid>
+                        <Grid item xs={8}>
+                          <Typography variant="body1">{inferenceDetail.model_info.model_name || '-'}</Typography>
+                        </Grid>
+                        
+                        <Grid item xs={4}>
+                          <Typography variant="subtitle2">最大トークン</Typography>
+                        </Grid>
+                        <Grid item xs={8}>
+                          <Typography variant="body1">{inferenceDetail.model_info.max_tokens || '-'}</Typography>
+                        </Grid>
+                        
+                        <Grid item xs={4}>
+                          <Typography variant="subtitle2">温度</Typography>
+                        </Grid>
+                        <Grid item xs={8}>
+                          <Typography variant="body1">{inferenceDetail.model_info.temperature !== undefined ? inferenceDetail.model_info.temperature : '-'}</Typography>
+                        </Grid>
+                        
+                        <Grid item xs={4}>
+                          <Typography variant="subtitle2">Top-P</Typography>
+                        </Grid>
+                        <Grid item xs={8}>
+                          <Typography variant="body1">{inferenceDetail.model_info.top_p !== undefined ? inferenceDetail.model_info.top_p : '-'}</Typography>
+                        </Grid>
+                      </Grid>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              )}
+              
+              {/* データセット情報 */}
+              {inferenceDetail?.dataset_info && (
+                <Grid item xs={12} md={6}>
+                  <Card>
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom>
+                        データセット情報
+                      </Typography>
+                      <Grid container spacing={2}>
+                        <Grid item xs={4}>
+                          <Typography variant="subtitle2">名前</Typography>
+                        </Grid>
+                        <Grid item xs={8}>
+                          <Typography variant="body1">{inferenceDetail.dataset_info.name || '-'}</Typography>
+                        </Grid>
+                        
+                        <Grid item xs={4}>
+                          <Typography variant="subtitle2">アイテム数</Typography>
+                        </Grid>
+                        <Grid item xs={8}>
+                          <Typography variant="body1">{inferenceDetail.dataset_info.item_count || '-'}</Typography>
+                        </Grid>
+                        
+                        <Grid item xs={4}>
+                          <Typography variant="subtitle2">サンプル数</Typography>
+                        </Grid>
+                        <Grid item xs={8}>
+                          <Typography variant="body1">{inferenceDetail.dataset_info.sample_count || '-'}</Typography>
+                        </Grid>
+                        
+                        <Grid item xs={4}>
+                          <Typography variant="subtitle2">N-Shots</Typography>
+                        </Grid>
+                        <Grid item xs={8}>
+                          <Typography variant="body1">{inferenceDetail.dataset_info.n_shots || 0}</Typography>
+                        </Grid>
+                      </Grid>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              )}
+              
+              {/* 評価メトリクス */}
+              {inferenceDetail?.evaluation_metrics && Object.keys(inferenceDetail.evaluation_metrics).length > 0 && (
+                <Grid item xs={12}>
+                  <Card>
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom>
+                        評価メトリクス
+                      </Typography>
+                      <Grid container spacing={3}>
+                        {Object.entries(inferenceDetail.evaluation_metrics).map(([key, value]) => (
+                          <Grid item xs={12} sm={6} md={4} lg={3} key={key}>
+                            <Paper elevation={2} sx={{ p: 2 }}>
+                              <Typography variant="subtitle2" gutterBottom>
+                                {key}
+                              </Typography>
+                              <Typography variant="h5" align="center">
+                                {typeof value === 'number' ? value.toFixed(4) : value}
+                              </Typography>
+                            </Paper>
+                          </Grid>
+                        ))}
+                      </Grid>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              )}
+              
+              {/* メトリクス詳細データ */}
+              {inferenceDetail?.metrics_details && Object.keys(inferenceDetail.metrics_details).length > 0 && (
+                <Grid item xs={12}>
+                  <Card>
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom>
+                        詳細メトリクス
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        各メトリクスの詳細情報（サンプルごとの評価結果）
+                      </Typography>
+                      
+                      {Object.entries(inferenceDetail.metrics_details).map(([metricName, metricDetails], index) => (
+                        <Box key={index} sx={{ mb: 3 }}>
+                          <Typography variant="subtitle1" gutterBottom>
+                            {metricName.replace('_details', '')}
+                          </Typography>
+                          
+                          {typeof metricDetails === 'object' && (
+                            <TableContainer component={Paper} variant="outlined" sx={{ mb: 2 }}>
+                              <Table size="small">
+                                <TableHead>
+                                  <TableRow>
+                                    <TableCell>項目</TableCell>
+                                    <TableCell>値</TableCell>
+                                  </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                  {Object.entries(metricDetails as Record<string, any>).map(([key, value], i) => (
+                                    <TableRow key={i}>
+                                      <TableCell>{key}</TableCell>
+                                      <TableCell>
+                                        {typeof value === 'object' 
+                                          ? JSON.stringify(value).slice(0, 100) + (JSON.stringify(value).length > 100 ? '...' : '')
+                                          : typeof value === 'number' 
+                                            ? value.toFixed(4) 
+                                            : String(value)
+                                        }
+                                      </TableCell>
+                                    </TableRow>
+                                  ))}
+                                </TableBody>
+                              </Table>
+                            </TableContainer>
+                          )}
+                        </Box>
+                      ))}
+                    </CardContent>
+                  </Card>
+                </Grid>
+              )}
+              
+              {/* 結果サマリー */}
+              {inferenceDetail?.results_summary && (
+                <Grid item xs={12}>
+                  <Card>
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom>
+                        結果サマリー
+                      </Typography>
+                      <Grid container spacing={2}>
+                        <Grid item xs={4} sm={3} md={2}>
+                          <Typography variant="subtitle2">処理アイテム数</Typography>
+                        </Grid>
+                        <Grid item xs={8} sm={9} md={10}>
+                          <Typography variant="body1">{inferenceDetail.results_summary.processed_items || 0}</Typography>
+                        </Grid>
+                        
+                        <Grid item xs={4} sm={3} md={2}>
+                          <Typography variant="subtitle2">成功数</Typography>
+                        </Grid>
+                        <Grid item xs={8} sm={9} md={10}>
+                          <Typography variant="body1">{inferenceDetail.results_summary.success_count || 0}</Typography>
+                        </Grid>
+                        
+                        <Grid item xs={4} sm={3} md={2}>
+                          <Typography variant="subtitle2">エラー数</Typography>
+                        </Grid>
+                        <Grid item xs={8} sm={9} md={10}>
+                          <Typography variant="body1">{inferenceDetail.results_summary.error_count || 0}</Typography>
+                        </Grid>
+                        
+                        <Grid item xs={4} sm={3} md={2}>
+                          <Typography variant="subtitle2">平均レイテンシ</Typography>
+                        </Grid>
+                        <Grid item xs={8} sm={9} md={10}>
+                          <Typography variant="body1">
+                            {inferenceDetail.results_summary.avg_latency ? `${inferenceDetail.results_summary.avg_latency.toFixed(2)}ms` : '-'}
+                          </Typography>
+                        </Grid>
+                        
+                        <Grid item xs={4} sm={3} md={2}>
+                          <Typography variant="subtitle2">平均トークン数</Typography>
+                        </Grid>
+                        <Grid item xs={8} sm={9} md={10}>
+                          <Typography variant="body1">
+                            {inferenceDetail.results_summary.avg_tokens ? inferenceDetail.results_summary.avg_tokens.toFixed(2) : '-'}
+                          </Typography>
+                        </Grid>
+                      </Grid>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              )}
+              
+              {/* JSON結果データ */}
+              {inferenceDetail?.json_results && (
+                <Grid item xs={12}>
+                  <Card>
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom>
+                        詳細な評価結果
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        JSONファイルに保存された詳細な評価結果データ
+                      </Typography>
+                      
+                      <Box sx={{ 
+                        maxHeight: 400, 
+                        overflow: 'auto',
+                        backgroundColor: '#f5f5f5',
+                        p: 2,
+                        borderRadius: 1,
+                        fontFamily: 'monospace',
+                        fontSize: '0.85rem'
+                      }}>
+                        <pre>
+                          {JSON.stringify(inferenceDetail.json_results, null, 2)}
+                        </pre>
+                      </Box>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              )}
+              
+              {/* 結果リスト */}
+              {results && results.length > 0 && (
+                <Grid item xs={12}>
+                  <Card>
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom>
+                        結果アイテム
+                      </Typography>
+                      <TableContainer sx={{ maxHeight: 400 }}>
+                        <Table stickyHeader sx={{ minWidth: 650 }} aria-label="推論結果テーブル">
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>入力</TableCell>
+                              <TableCell>期待される出力</TableCell>
+                              <TableCell>実際の出力</TableCell>
+                              <TableCell>レイテンシ</TableCell>
+                              <TableCell>トークン数</TableCell>
+                              <TableCell>エラー</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {results.map((result) => (
+                              <TableRow key={result.id}>
+                                <TableCell sx={{ maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {result.input}
+                                </TableCell>
+                                <TableCell sx={{ maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {result.expectedOutput || '-'}
+                                </TableCell>
+                                <TableCell sx={{ maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {result.actualOutput || '-'}
+                                </TableCell>
+                                <TableCell>
+                                  {result.latency ? `${result.latency}ms` : '-'}
+                                </TableCell>
+                                <TableCell>
+                                  {result.tokenCount || '-'}
+                                </TableCell>
+                                <TableCell>
+                                  {result.error || '-'}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              )}
+              
+              {/* データがない場合 */}
+              {(!inferenceDetail || (Object.keys(inferenceDetail).length === 0 && !results?.length)) && (
+                <Grid item xs={12}>
+                  <Paper sx={{ p: 3, textAlign: 'center' }}>
+                    <Typography variant="body1" color="text.secondary">
+                      {inference.status === 'pending'
+                        ? '推論はまだ実行されていません。「実行」ボタンをクリックして推論を開始してください。'
+                        : inference.status === 'running'
+                          ? '推論を実行中です。結果が生成されるまでお待ちください。'
+                          : '推論結果がありません。'}
+                    </Typography>
+                  </Paper>
+                </Grid>
+              )}
+            </Grid>
           )}
         </>
       )}

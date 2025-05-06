@@ -394,12 +394,13 @@ class InferenceRepository:
             logger.error(f"推論結果作成エラー: {e}")
             raise
     
-    def get_inference_results(self, inference_id: str) -> List[Dict[str, Any]]:
+    def get_inference_results(self, inference_id: str, limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """
         特定の推論に関連する結果一覧を取得
         
         Args:
             inference_id: 推論ID
+            limit: 取得する結果の最大数（指定がない場合はすべての結果を取得）
             
         Returns:
             推論結果のリスト
@@ -410,6 +411,10 @@ class InferenceRepository:
         WHERE inference_id = ?
         ORDER BY created_at ASC
         """
+        
+        # limitが指定されている場合はクエリに追加
+        if limit is not None:
+            query += f" LIMIT {int(limit)}"
         
         try:
             results = self.db.fetch_all(query, (inference_id,))

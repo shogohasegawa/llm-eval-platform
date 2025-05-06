@@ -173,6 +173,11 @@ export const inferencesApi = {
       responseType: 'blob',
     });
   },
+  
+  // 推論の詳細情報を取得
+  getInferenceDetail: async (id: string): Promise<any> => {
+    return apiClient.get<any>(`/api/v1/inferences/${id}/detail`);
+  },
 
   // 評価APIを直接呼び出す（特殊ケース用）
   runEvaluation: async (evaluationRequest: EvaluationRequest): Promise<any> => {

@@ -67,15 +67,18 @@ async def log_evaluation_results(model_name: str, metrics: Dict[str, float]) -> 
                     from mlflow.client import MlflowClient
                     client = MlflowClient()
                     
-                    # フィルターを使用して同じモデル名のランを検索
-                    run_filter = f"params.model_name = '{model_name}'"
-                    logger.info(f"Searching for existing runs with filter: {run_filter}")
+                    # 常に"base"タグが付いた親ランを検索（n_shotsに関係なく同じランを使用）
+                    # モデル名だけを条件にすることで、異なるn_shotsでも同じランを使う
+                    run_filter = f"params.model_name = '{model_name}' and tags.run_type = 'base'"
+                    logger.info(f"Searching for existing base run with filter: {run_filter}")
                     matching_runs = client.search_runs(
                         experiment_ids=[experiment.experiment_id],
-                        filter_string=run_filter
+                        filter_string=run_filter,
+                        max_results=1
                     )
                     
                     # 同じモデル名でランが存在する場合は、そのランを再利用
+                    run_id = None
                     if matching_runs:
                         run_id = matching_runs[0].info.run_id
                         logger.info(f"Found existing run for {model_name} with ID: {run_id}, will update it")
@@ -97,12 +100,33 @@ async def log_evaluation_results(model_name: str, metrics: Dict[str, float]) -> 
                         # 新規ランの場合のみパラメータをログ
                         mlflow.log_param("model_name", model_name)
                         mlflow.log_param("created_at", datetime.datetime.now().isoformat())
+                        mlflow.log_param("model_type", model_name.split(':')[0] if ':' in model_name else model_name)
+                        mlflow.log_param("supported_n_shots", "0,1,2,3,4,5")
+                        
+                        # 新規ランに必ずbaseタグを付ける
+                        client.set_tag(run.info.run_id, "run_type", "base")
+                        logger.info(f"✅ Tagged new run as 'base'")
                     
                     run_id = run.info.run_id
                     logger.info(f"Run loaded/created with ID: {run_id}")
                     
-                    # 更新時刻をログ
-                    mlflow.log_param("updated_at", datetime.datetime.now().isoformat())
+                    # 更新時刻をタグとしてログ（タグは何度でも更新可能）
+                    try:
+                        client.set_tag(run_id, "last_updated_at", datetime.datetime.now().isoformat())
+                        logger.info(f"✅ Updated 'last_updated_at' tag for run {run_id}")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Could not update 'last_updated_at' tag: {str(e)}")
+                    
+                    # n_shots 値を取得（これは後でメトリクスのステップ値として使用）
+                    n_shots_value = 0
+                    if "n_shots_value" in metrics:
+                        n_shots_value = metrics.pop("n_shots_value")
+                        logger.info(f"Using n_shots value from metrics: {n_shots_value}")
+                    else:
+                        logger.warning("n_shots_value not found in metrics, defaulting to 0")
+                    
+                    # n_shots 値をランのタグとして記録（表示では使わないが、デバッグに便利）
+                    client.set_tag(run_id, f"n_shots_{n_shots_value}_updated_at", datetime.datetime.now().isoformat())
                     
                     # Filter and convert metrics to numeric values
                     numeric_metrics = {}
@@ -127,17 +151,100 @@ async def log_evaluation_results(model_name: str, metrics: Dict[str, float]) -> 
                     # Log all metrics at once using log_metrics (more reliable than individual log_metric calls)
                     if numeric_metrics:
                         try:
-                            logger.info(f"📊 Logging all metrics at once to MLflow: {list(numeric_metrics.keys())}")
-                            mlflow.log_metrics(numeric_metrics)
-                            logger.info(f"✅ Successfully logged {len(numeric_metrics)} metrics to MLflow")
+                            formatted_metrics = dict(sorted(numeric_metrics.items()))
+                            logger.info(f"📊 Logging all metrics at once to MLflow: {list(formatted_metrics.keys())}")
+                            
+                            # メトリクスをより詳細に表示（デバッグ用）
+                            for metric_name, metric_value in formatted_metrics.items():
+                                logger.info(f"📊 MLflow記録予定メトリクス: {metric_name} = {metric_value} (type: {type(metric_value).__name__})")
+                            
+                            # Get existing metrics to check for conflicts
+                            existing_metrics = {}
+                            try:
+                                from mlflow.tracking.client import MlflowClient
+                                client = MlflowClient()
+                                run_data = client.get_run(run_id).data
+                                for key, value in run_data.metrics.items():
+                                    existing_metrics[key] = value
+                                logger.info(f"Found {len(existing_metrics)} existing metrics in run {run_id}")
+                            except Exception as e:
+                                logger.warning(f"Could not retrieve existing metrics: {str(e)}")
+                            
+                            # すべてのメトリクスを n_shots_value をステップとして使用し、統一的にログ記録
+                            logger.info(f"Logging {len(formatted_metrics)} metrics with n_shots={n_shots_value} as step")
+                            logged_count = 0
+                            
+                            # n_shots_value はメトリクスではなく、ステップとして使用するので除外
+                            if "n_shots_value" in formatted_metrics:
+                                formatted_metrics.pop("n_shots_value")
+                            
+                            # メトリクス名をチェックし、形式が重複している場合は修正
+                            cleaned_metrics = {}
+                            for key, value in formatted_metrics.items():
+                                # 重複したn_shot情報をチェック（例: "aio_0shot_aio_0shot_char_f1"）
+                                shot_patterns = ["_0shot_", "_1shot_", "_2shot_", "_3shot_", "_4shot_", "_5shot_"]
+                                
+                                if any(shot in key for shot in shot_patterns):
+                                    # 重複を検出しようと試みる
+                                    try:
+                                        # '_0shot_'などの最初の出現位置を見つける
+                                        match_positions = []
+                                        for pattern in shot_patterns:
+                                            pos = key.find(pattern)
+                                            if pos != -1:
+                                                match_positions.append((pos, pattern))
+                                        
+                                        if match_positions:
+                                            # 最初に出現するパターンを使用
+                                            first_pos, first_pattern = min(match_positions, key=lambda x: x[0])
+                                            
+                                            # 重複がある場合は正規化
+                                            if shot_patterns.count(first_pattern) > 1:
+                                                # データセット名を取得
+                                                dataset_name = key[:first_pos]
+                                                
+                                                # メトリクス名を取得（最後の部分）
+                                                metric_part = key.split("_")[-1]
+                                                
+                                                # 新しい正規化されたキー
+                                                normalized_key = f"{dataset_name}{first_pattern}{metric_part}"
+                                                
+                                                cleaned_metrics[normalized_key] = value
+                                                continue
+                                    except Exception:
+                                        pass
+                                
+                                # 問題がなければそのまま追加
+                                cleaned_metrics[key] = value
+                            
+                            # 元のメトリクスを置き換え
+                            formatted_metrics = cleaned_metrics
+                            
+                            # すべてのメトリクスを同じn_shots値をステップとして記録
+                            for key, value in formatted_metrics.items():
+                                try:
+                                    mlflow.log_metric(key, value, step=n_shots_value)
+                                    logger.info(f"✅ Logged metric {key} = {value} with step={n_shots_value}")
+                                    logged_count += 1
+                                except Exception as e:
+                                    logger.error(f"❌ Failed to log metric {key}: {str(e)}")
+                            
+                            logger.info(f"✅ Successfully logged {logged_count}/{len(formatted_metrics)} metrics to MLflow")
                         except Exception as metrics_error:
                             logger.error(f"❌ Error logging metrics to MLflow: {str(metrics_error)}", exc_info=True)
                             # Fall back to logging metrics one by one
                             logger.info("🔄 Trying to log metrics one by one as fallback")
+                            
+                            # n_shots_value はメトリクスではなく、ステップとして使用するので除外
+                            if "n_shots_value" in numeric_metrics:
+                                numeric_metrics.pop("n_shots_value")
+                            
                             logged_metrics_count = 0
                             for key, value in numeric_metrics.items():
                                 try:
-                                    mlflow.log_metric(key, value)
+                                    # すべてのメトリクスを同じステップで記録
+                                    logger.info(f"📊 個別にログ: {key} = {value} with step={n_shots_value}")
+                                    mlflow.log_metric(key, value, step=n_shots_value)
                                     logged_metrics_count += 1
                                 except Exception as e:
                                     logger.error(f"❌ Failed to log metric {key}: {str(e)}")
@@ -145,14 +252,15 @@ async def log_evaluation_results(model_name: str, metrics: Dict[str, float]) -> 
                     
                     logger.info(f"All MLflow logging operations completed")
                     
-                    # Display MLflow UI URL for easier debugging
+                    # Display MLflow UI URLs for easier debugging
                     tracking_uri = mlflow.get_tracking_uri()
                     if tracking_uri.startswith("http"):
-                        logger.info(f"MLflow UI URL: {tracking_uri}/#/experiments/{experiment.experiment_id}/runs/{run_id}")
+                        logger.info(f"MLflow Run URL: {tracking_uri}/#/experiments/{experiment.experiment_id}/runs/{run_id}")
+                        logger.info(f"MLflow Experiment URL: {tracking_uri}/#/experiments/{experiment.experiment_id}")
                     
-                    # End the run
+                    # ランを終了
                     mlflow.end_run()
-                    logger.info(f"MLflow logging completed for {model_name}")
+                    logger.info(f"MLflow logging completed for {model_name} with n_shots={n_shots_value}")
                     return True
                 except Exception as run_error:
                     logger.error(f"Error during MLflow run: {str(run_error)}")

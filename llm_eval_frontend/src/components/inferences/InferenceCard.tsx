@@ -196,13 +196,12 @@ const InferenceCard: React.FC<InferenceCardProps> = ({ inference, onRun, onStop,
               {inference.status === 'running' && (
                 <Box sx={{ width: '100%', mt: 1 }}>
                   <LinearProgress 
-                    variant="determinate" 
-                    value={inference.progress} 
+                    variant="indeterminate" 
                     color="primary"
                     sx={{ height: 4, borderRadius: 2 }}
                   />
                   <Typography variant="caption" color="primary" align="right" fontWeight="bold">
-                    進捗: {inference.progress}%
+                    処理中...
                   </Typography>
                 </Box>
               )}

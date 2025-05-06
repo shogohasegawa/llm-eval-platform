@@ -113,3 +113,12 @@ export const useExportInferenceResults = (inferenceId: string) => {
     mutationFn: () => inferencesApi.exportInferenceResults(inferenceId),
   });
 };
+
+// 推論の詳細情報を取得するフック
+export const useInferenceDetail = (inferenceId: string) => {
+  return useQuery<any, Error>({
+    queryKey: ['inferences', inferenceId, 'detail'],
+    queryFn: () => inferencesApi.getInferenceDetail(inferenceId),
+    enabled: !!inferenceId, // inferenceIdがある場合のみクエリを実行
+  });
+};

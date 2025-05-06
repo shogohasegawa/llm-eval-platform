@@ -51,7 +51,7 @@ class EvaluationRequest(BaseModel):
 class EvaluationResponse(BaseModel):
     """評価レスポンスモデル"""
     model_info: ModelConfig       # 使用したモデル情報
-    metrics: Dict[str, float]     # フラットメトリクス辞書
+    metrics: Dict[str, Any]       # フラットメトリクス辞書（辞書型の値も許容）
 
 
 class JobStatus(str, Enum):
@@ -233,7 +233,7 @@ class InferenceResult(BaseModel):
     input: str
     expected_output: Optional[str] = None
     actual_output: str
-    metrics: Optional[Dict[str, float]] = None
+    metrics: Optional[Dict[str, Any]] = None  # Any型に変更して辞書型も許容
     latency: Optional[float] = None
     token_count: Optional[int] = None
     created_at: datetime
@@ -249,7 +249,7 @@ class Inference(BaseModel):
     model_id: str
     status: InferenceStatus
     progress: int = 0
-    metrics: Optional[Dict[str, float]] = None
+    metrics: Optional[Dict[str, Any]] = None  # Any型に変更して辞書型も許容
     results: List[InferenceResult] = []
     created_at: datetime
     updated_at: datetime
@@ -277,7 +277,7 @@ class InferenceUpdate(BaseModel):
     description: Optional[str] = None
     status: Optional[InferenceStatus] = None
     progress: Optional[int] = None
-    metrics: Optional[Dict[str, float]] = None
+    metrics: Optional[Dict[str, Any]] = None  # Any型に変更して辞書型も許容
 
 
 class InferenceListResponse(BaseModel):
