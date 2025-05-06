@@ -1,16 +1,19 @@
 """
 回答を含むかどうかの評価指標モジュール
 """
-from .base import BaseMetric, register_metric
+from typing import Dict, Any, Optional
+from .base import BaseMetric, register_metric, ParamDef
 
 
 @register_metric
 class ContainsAnswer(BaseMetric):
     """
     回答を含むかどうかの評価指標
+    
+    モデルの出力が正解を含んでいるかどうかをチェックします。
     """
 
-    def __init__(self, parameters=None):
+    def __init__(self, parameters: Optional[Dict[str, Any]] = None):
         """
         初期化メソッド
         
@@ -18,6 +21,30 @@ class ContainsAnswer(BaseMetric):
             parameters: 評価指標のパラメータ (オプション)
         """
         super().__init__(name="contains_answer", parameters=parameters)
+        self.is_higher_better = True
+
+    @classmethod
+    def get_parameter_definitions(cls) -> ParamDef:
+        """
+        回答を含むかどうかの評価指標で使用可能なパラメータ定義
+        
+        Returns:
+            Dict: パラメータ名とその定義（型、説明、デフォルト値など）の辞書
+        """
+        return {
+            "strip_whitespace": {
+                "type": "boolean",
+                "description": "前後の空白を削除する",
+                "default": True,
+                "required": False
+            },
+            "case_sensitive": {
+                "type": "boolean",
+                "description": "大文字小文字を区別する",
+                "default": True,
+                "required": False
+            }
+        }
 
     def calculate(self, hypothesis: str, reference: str) -> float:
         """
@@ -30,4 +57,18 @@ class ContainsAnswer(BaseMetric):
         Returns:
             float: 評価スコア（含む: 1.0, 含まない: 0.0）
         """
-        return float(reference.strip() in hypothesis.strip())
+        # パラメータを取得
+        strip_whitespace = self.parameters.get("strip_whitespace", True)
+        case_sensitive = self.parameters.get("case_sensitive", True)
+        
+        # 前処理
+        hyp = hypothesis.strip() if strip_whitespace else hypothesis
+        ref = reference.strip() if strip_whitespace else reference
+        
+        # 大文字小文字を区別しない場合
+        if not case_sensitive:
+            hyp = hyp.lower()
+            ref = ref.lower()
+        
+        # 含まれているかチェック
+        return float(ref in hyp)

@@ -1,0 +1,36 @@
+{
+  "name": "llm_judge_sample",
+  "description": "LLM Judgeメトリクス評価用サンプルデータセット",
+  "metrics": [
+    {
+      "name": "llm_judge",
+      "parameters": {
+        "judge_model": "gpt-4",
+        "judge_provider": "openai",
+        "system_prompt": "Please act as an impartial judge and evaluate the quality of the response provided by an AI assistant to the user question displayed below. Your evaluation should consider factors such as the helpfulness, relevance, accuracy, depth, creativity, and level of detail of the response. Begin your evaluation by providing a short explanation. Be as objective as possible. After providing your explanation, you must rate the response on a scale of 1 to 10 by strictly following this format: \"[[rating]]\", for example: \"Rating: [[5]]\".",
+        "scale_to_range": true
+      }
+    },
+    "exact_match",
+    "char_f1"
+  ],
+  "instruction": "以下の質問に対して適切な回答を作成してください。",
+  "output_length": 1024,
+  "samples": [
+    {
+      "id": "llm_judge_1",
+      "input": "日本の首都はどこですか？",
+      "output": "日本の首都は東京です。"
+    },
+    {
+      "id": "llm_judge_2",
+      "input": "人工知能（AI）とは何ですか？簡潔に説明してください。",
+      "output": "人工知能（AI）とは、人間の知能を模倣し、学習、推論、問題解決、言語理解などのタスクを実行するコンピュータシステムです。機械学習やディープラーニングなどの技術を活用して、データから学習し、パターンを認識することで、予測や意思決定を行うことができます。"
+    },
+    {
+      "id": "llm_judge_3",
+      "input": "太陽系には何個の惑星がありますか？それぞれの名前を教えてください。",
+      "output": "太陽系には8個の惑星があります。太陽に近い順に、水星、金星、地球、火星、木星、土星、天王星、海王星です。なお、冥王星は2006年に準惑星に分類が変更されました。"
+    }
+  ]
+}

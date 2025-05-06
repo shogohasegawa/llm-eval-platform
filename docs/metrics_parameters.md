@@ -75,6 +75,28 @@ Character-level F1 score with customizable beta parameter.
 }
 ```
 
+### LLM Judge (llm_judge)
+
+Uses a powerful LLM like GPT-4 to judge the quality of model outputs. Returns a score on a scale from 0 to 1.
+
+```json
+{
+  "name": "llm_judge",
+  "parameters": {
+    "judge_model": "gpt-4-turbo",       // The LLM model to use as the judge
+    "judge_provider": "openai",         // The provider of the judge model
+    "system_prompt": "Custom prompt...", // System prompt for the judge
+    "prompt_template": "Custom template...", // Template for evaluation without reference
+    "reference_prompt_template": "Custom template...", // Template for evaluation with reference
+    "use_reference": false,             // Whether to include reference in evaluation
+    "scale_to_range": true,             // Whether to scale score from 0-10 to 0-1
+    "max_tokens": 1024,                 // Maximum tokens for LLM response
+    "temperature": 0.1,                 // Temperature for LLM response
+    "api_key": ""                       // Optional API key (defaults to env variables)
+  }
+}
+```
+
 ## Dataset Format with Metric Parameters
 
 When creating a dataset JSON file, you can specify metrics with parameters:
@@ -103,6 +125,37 @@ When creating a dataset JSON file, you can specify metrics with parameters:
 The platform supports both formats for backward compatibility:
 - Simple format: `"metrics": ["bleu", "exact_match"]`
 - Parameterized format: `"metrics": [{"name": "bleu", "parameters": {...}}]`
+
+### Example: LLM Judge in a Dataset
+
+Here's an example of using the LLM Judge metric in a dataset:
+
+```json
+{
+  "name": "LLM Judge Example",
+  "description": "Dataset with LLM judge evaluation",
+  "metrics": [
+    {
+      "name": "llm_judge",
+      "parameters": {
+        "judge_model": "gpt-4",
+        "judge_provider": "openai",
+        "system_prompt": "Please act as an impartial judge and evaluate the quality of the response provided by an AI assistant to the user question displayed below. Your evaluation should consider factors such as the helpfulness, relevance, accuracy, depth, creativity, and level of detail of the response. Begin your evaluation by providing a short explanation. Be as objective as possible. After providing your explanation, you must rate the response on a scale of 1 to 10 by strictly following this format: \"[[rating]]\", for example: \"Rating: [[5]]\".",
+        "scale_to_range": true
+      }
+    },
+    "exact_match",
+    "char_f1"
+  ],
+  "instruction": "以下の質問に対して適切な回答を作成してください。",
+  "samples": [
+    {
+      "input": "日本の首都はどこですか？",
+      "output": "日本の首都は東京です。"
+    }
+  ]
+}
+```
 
 ## Creating Custom Metrics
 

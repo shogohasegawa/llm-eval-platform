@@ -1,0 +1,54 @@
+{
+  "name": "llm_judge_nejumi_sample",
+  "description": "Nejumi互換モードのLLM Judgeメトリクス評価用サンプルデータセット",
+  "metrics": [
+    {
+      "name": "llm_judge",
+      "parameters": {
+        "judge_model": "gpt-4",
+        "judge_provider": "openai",
+        "use_nejumi_prompts": true,
+        "scale_to_range": true
+      }
+    }
+  ],
+  "instruction": "以下の質問に対して適切な回答を作成してください。",
+  "output_length": 1024,
+  "samples": [
+    {
+      "id": "nejumi_general_1",
+      "input": "日本の首都はどこですか？",
+      "output": "日本の首都は東京です。",
+      "metadata": {
+        "category": "general"
+      }
+    },
+    {
+      "id": "nejumi_math_1",
+      "input": "方程式 2x + 3 = 13 を解きなさい。",
+      "output": "2x + 3 = 13\n2x = 13 - 3\n2x = 10\nx = 5\n\n答え：x = 5",
+      "metadata": {
+        "category": "math",
+        "reference_answer": "2x + 3 = 13\n両辺から3を引く\n2x = 10\n両辺を2で割る\nx = 5\n\n方程式の解はx = 5"
+      }
+    },
+    {
+      "id": "nejumi_reasoning_1",
+      "input": "次の論理パズルを解いてください：「太郎、次郎、三郎の3人がいます。太郎は常に嘘をつき、次郎は常に真実を言い、三郎は時々嘘をつきます。ある日、3人に「あなたは誰ですか？」と尋ねたところ、最初の人は「私は太郎です」、2番目の人は「私は次郎です」、3番目の人は「私は三郎です」と答えました。それぞれ誰が答えたでしょうか？」",
+      "output": "最初の人が「私は太郎です」と言ったことを考えます。\n- もし本当に太郎なら、嘘をつくはずなので「私は太郎です」と言わないはず\n- よって、最初の人は太郎ではない\n\n2番目の人が「私は次郎です」と言ったことを考えます。\n- もし本当に次郎なら、真実を言うので自分が次郎だと正直に言うはず\n- これは矛盾しないので、2番目の人は次郎の可能性がある\n\n3番目の人が「私は三郎です」と言ったことを考えます。\n- この時点で、1人目と2人目のどちらかが太郎で、もう一人が三郎である必要がある\n- もし2人目が次郎なら、1人目は太郎か三郎のどちらか\n- 1人目が太郎だとすると、常に嘘をつくので「私は太郎です」とは言わない\n- よって1人目は太郎ではなく三郎であり、嘘をついている\n- そして3人目は太郎であり、嘘をついて「私は三郎です」と言っている\n\nよって、1人目は三郎、2人目は次郎、3人目は太郎です。",
+      "metadata": {
+        "category": "reasoning",
+        "reference_answer": "太郎は常に嘘をつくので、「私は太郎です」と言った場合、その人は太郎ではありません。次郎は常に真実を言うので、「私は次郎です」と言った場合、その人は本当に次郎です。\n\nまず、2番目の人が次郎だと仮定します。すると、最初の人と3番目の人は太郎と三郎のどちらかです。\n\n1人目が「私は太郎です」と言ったので、太郎ではありません（太郎は自分が太郎だとは言わないため）。よって1人目は三郎です。\n\n3人目が「私は三郎です」と言ったことになりますが、この人が太郎なら、これは嘘になるので矛盾しません。\n\nよって、1人目は三郎、2人目は次郎、3人目は太郎です。"
+      }
+    },
+    {
+      "id": "nejumi_coding_1",
+      "input": "Pythonで1から100までの数字のうち、3の倍数の場合は「Fizz」、5の倍数の場合は「Buzz」、3と5の両方の倍数の場合は「FizzBuzz」を出力し、それ以外の場合は数字をそのまま出力するプログラムを書いてください。",
+      "output": "```python\nfor i in range(1, 101):\n    if i % 3 == 0 and i % 5 == 0:\n        print(\"FizzBuzz\")\n    elif i % 3 == 0:\n        print(\"Fizz\")\n    elif i % 5 == 0:\n        print(\"Buzz\")\n    else:\n        print(i)\n```",
+      "metadata": {
+        "category": "coding",
+        "reference_answer": "```python\nfor number in range(1, 101):\n    output = \"\"\n    if number % 3 == 0:\n        output += \"Fizz\"\n    if number % 5 == 0:\n        output += \"Buzz\"\n    if output == \"\":\n        output = str(number)\n    print(output)\n```"
+      }
+    }
+  ]
+}

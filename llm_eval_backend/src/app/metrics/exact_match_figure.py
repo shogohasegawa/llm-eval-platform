@@ -13,8 +13,9 @@ class ExactMatchFigure(BaseMetric):
     """
     図表・表の完全一致評価指標
     
-    図表・表のような構造化テキストを評価するために最適化された指標です。
-    行・列区切り文字や空白、大小文字などを無視するオプションを持っています。
+    Nejumiのデフォルト実装では、数値に変換して比較を行います。
+    拡張モードでは、図表・表のような構造化テキストを評価するために
+    最適化された指標となります。
     """
 
     def __init__(self, parameters: Optional[Dict[str, Any]] = None):
@@ -65,6 +66,12 @@ class ExactMatchFigure(BaseMetric):
                 "description": "数値の表記を統一する（1.0 → 1、1,000 → 1000）",
                 "default": True,
                 "required": False
+            },
+            "nejumi_compatible": {
+                "type": "boolean",
+                "description": "Nejumi Leaderboardと同じ実装を使用する（単純な数値比較）",
+                "default": True,
+                "required": False
             }
         }
 
@@ -79,6 +86,15 @@ class ExactMatchFigure(BaseMetric):
         Returns:
             float: 評価スコア（一致: 1.0, 不一致: 0.0）
         """
+        # Nejumi互換モード
+        if self.parameters.get("nejumi_compatible", True):
+            # 単純な数値比較（Nejumi実装に準拠）
+            try:
+                return float(float(hypothesis.strip()) == float(reference.strip()))
+            except ValueError:
+                return 0.0
+
+        # 拡張モード
         # パラメータを取得
         ignore_case = self.parameters.get("ignore_case", True)
         ignore_whitespace = self.parameters.get("ignore_whitespace", True)
