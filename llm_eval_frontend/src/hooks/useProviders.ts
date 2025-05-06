@@ -15,11 +15,12 @@ export const useProviders = () => {
 };
 
 // 特定のプロバイダを取得するフック
-export const useProvider = (id: string) => {
+export const useProvider = (id: string, options = {}) => {
   return useQuery<Provider, Error>({
     queryKey: ['providers', id],
     queryFn: () => providersApi.getProvider(id),
     enabled: !!id, // idが存在する場合のみクエリを実行
+    ...options, // 追加のオプションを受け取れるように
   });
 };
 
@@ -103,11 +104,12 @@ export const useModels = () => {
 };
 
 // 特定のモデルを取得するフック
-export const useModel = (id: string) => {
+export const useModel = (id: string, options = {}) => {
   return useQuery<Model, Error>({
     queryKey: ['models', id],
     queryFn: () => providersApi.getModel(id),
     enabled: !!id,
+    ...options, // 追加のオプションを受け取れるように
   });
 };
 
@@ -121,7 +123,7 @@ export const useProviderModels = (providerId: string) => {
 };
 
 // モデルを作成するフック
-export const useCreateModel = () => {
+export const useCreateModel = (providerId: string) => {
   const queryClient = useQueryClient();
   
   return useMutation<Model, Error, ModelFormData>({
@@ -130,13 +132,13 @@ export const useCreateModel = () => {
       // 成功時にモデル一覧を再取得
       queryClient.invalidateQueries({ queryKey: ['models'] });
       // プロバイダのモデル一覧も再取得
-      queryClient.invalidateQueries({ queryKey: ['providers', data.providerId, 'models'] });
+      queryClient.invalidateQueries({ queryKey: ['providers', providerId, 'models'] });
     },
   });
 };
 
 // モデルを更新するフック
-export const useUpdateModel = (modelId: string) => {
+export const useUpdateModel = (providerId: string, modelId: string) => {
   const queryClient = useQueryClient();
   
   return useMutation<Model, Error, ModelFormData>({
@@ -147,22 +149,22 @@ export const useUpdateModel = (modelId: string) => {
       // 特定のモデルも再取得
       queryClient.invalidateQueries({ queryKey: ['models', modelId] });
       // プロバイダのモデル一覧も再取得
-      queryClient.invalidateQueries({ queryKey: ['providers', data.providerId, 'models'] });
+      queryClient.invalidateQueries({ queryKey: ['providers', providerId, 'models'] });
     },
   });
 };
 
 // モデルを削除するフック
-export const useDeleteModel = () => {
+export const useDeleteModel = (providerId: string) => {
   const queryClient = useQueryClient();
   
-  return useMutation<void, Error, {modelId: string, providerId: string}>({
-    mutationFn: ({modelId}) => providersApi.deleteModel(modelId),
-    onSuccess: (_, variables) => {
+  return useMutation<void, Error, string>({
+    mutationFn: (modelId) => providersApi.deleteModel(modelId),
+    onSuccess: () => {
       // 成功時にモデル一覧を再取得
       queryClient.invalidateQueries({ queryKey: ['models'] });
       // プロバイダのモデル一覧も再取得
-      queryClient.invalidateQueries({ queryKey: ['providers', variables.providerId, 'models'] });
+      queryClient.invalidateQueries({ queryKey: ['providers', providerId, 'models'] });
     },
   });
 };

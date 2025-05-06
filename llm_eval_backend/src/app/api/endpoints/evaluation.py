@@ -138,11 +138,6 @@ async def evaluate(
                 if key.endswith("_details") or key.endswith("_error_rate"):
                     continue
                 flat_metrics[key] = value  # 例: "aio_0shot_char_f1": 0.11
-                
-                # エラー率も追加
-                error_rate_key = f"{key}_error_rate"
-                if error_rate_key in details:
-                    flat_metrics[error_rate_key] = details[error_rate_key]
 
         # 3) バックグラウンドでMLflowへログ
         background_tasks.add_task(

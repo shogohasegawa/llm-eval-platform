@@ -27,7 +27,7 @@ import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useInference, useInferenceResults, useRunInference, useStopInference, useExportInferenceResults } from '../hooks/useInferences';
 import { useDatasetByName } from '../hooks/useDatasets';
-import { useProvider } from '../hooks/useProviders';
+import { useProvider, useModel } from '../hooks/useProviders';
 import { InferenceResult } from '../types/inference';
 import { useAppContext } from '../contexts/AppContext';
 
@@ -69,6 +69,7 @@ const InferenceDetail: React.FC = () => {
   // 関連データの取得
   const { data: dataset } = useDatasetByName(inference?.datasetId || '');
   const { data: provider } = useProvider(inference?.providerId || '');
+  const { data: model } = useModel(inference?.modelId || '');
 
   // ミューテーションフック
   const runInference = useRunInference(inferenceId);
@@ -291,14 +292,46 @@ const InferenceDetail: React.FC = () => {
 
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
         <Tabs value={tabValue} onChange={handleTabChange} aria-label="inference tabs">
-          <Tab label="結果" id="tab-0" />
-          <Tab label="詳細" id="tab-1" />
-          <Tab label="メトリクス" id="tab-2" />
+          <Tab label="メトリクス" id="tab-0" />
+          <Tab label="結果" id="tab-1" />
+          <Tab label="詳細" id="tab-2" />
         </Tabs>
       </Box>
 
-      {/* 結果タブ */}
+      {/* メトリクスタブ */}
       {tabValue === 0 && (
+        <>
+          {inference.metrics && Object.keys(inference.metrics).length > 0 ? (
+            <Grid container spacing={3}>
+              {Object.entries(inference.metrics).map(([key, value]) => (
+                <Grid item xs={12} sm={6} md={4} key={key}>
+                  <Card>
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom>
+                        {key}
+                      </Typography>
+                      <Typography variant="h4" align="center">
+                        {typeof value === 'number' ? value.toFixed(4) : value}
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+          ) : (
+            <Paper sx={{ p: 3, textAlign: 'center' }}>
+              <Typography variant="body1" color="text.secondary">
+                {inference.status === 'completed'
+                  ? 'メトリクスが計算されていません。'
+                  : '推論が完了するとメトリクスが表示されます。'}
+              </Typography>
+            </Paper>
+          )}
+        </>
+      )}
+
+      {/* 結果タブ */}
+      {tabValue === 1 && (
         <>
           {isLoadingResults ? (
             <Box display="flex" justifyContent="center" my={4}>
@@ -362,7 +395,7 @@ const InferenceDetail: React.FC = () => {
       )}
 
       {/* 詳細タブ */}
-      {tabValue === 1 && (
+      {tabValue === 2 && (
         <Grid container spacing={3}>
           <Grid item xs={12} md={6}>
             <Card>
@@ -410,7 +443,7 @@ const InferenceDetail: React.FC = () => {
                     <Typography variant="subtitle2">モデル</Typography>
                   </Grid>
                   <Grid item xs={8}>
-                    <Typography variant="body1">{inference.modelId}</Typography>
+                    <Typography variant="body1">{model?.displayName || model?.name || inference.modelId}</Typography>
                   </Grid>
 
                   <Grid item xs={4}>
@@ -463,38 +496,6 @@ const InferenceDetail: React.FC = () => {
             </Card>
           </Grid>
         </Grid>
-      )}
-
-      {/* メトリクスタブ */}
-      {tabValue === 2 && (
-        <>
-          {inference.metrics && Object.keys(inference.metrics).length > 0 ? (
-            <Grid container spacing={3}>
-              {Object.entries(inference.metrics).map(([key, value]) => (
-                <Grid item xs={12} sm={6} md={4} key={key}>
-                  <Card>
-                    <CardContent>
-                      <Typography variant="h6" gutterBottom>
-                        {key}
-                      </Typography>
-                      <Typography variant="h4" align="center">
-                        {typeof value === 'number' ? value.toFixed(4) : value}
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              ))}
-            </Grid>
-          ) : (
-            <Paper sx={{ p: 3, textAlign: 'center' }}>
-              <Typography variant="body1" color="text.secondary">
-                {inference.status === 'completed'
-                  ? 'メトリクスが計算されていません。'
-                  : '推論が完了するとメトリクスが表示されます。'}
-              </Typography>
-            </Paper>
-          )}
-        </>
       )}
     </Box>
   );

@@ -327,11 +327,6 @@ async def execute_inference_evaluation(
                 if key.endswith("_details") or key.endswith("_error_rate"):
                     continue
                 flat_metrics[key] = value
-                
-                # エラー率も追加
-                error_rate_key = f"{key}_error_rate"
-                if error_rate_key in details:
-                    flat_metrics[error_rate_key] = details[error_rate_key]
         
         # メトリクスが空の場合は警告
         if not flat_metrics:

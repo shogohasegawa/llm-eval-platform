@@ -279,24 +279,9 @@ const Inferences: React.FC = () => {
       console.log('Sending inference request to API...');
       
       try {
-        // APIクライアントではなく直接フェッチを使用
-        const response = await fetch('/api/v1/inferences', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(inferenceData),
-        });
+        // inferencesApiを使用
+        const result = await inferencesApi.createInference(inferenceData);
         
-        console.log('Raw API response status:', response.status);
-        
-        if (!response.ok) {
-          const errorData = await response.text();
-          console.error('API error response:', errorData);
-          throw new Error(`API error: ${response.status} ${response.statusText}\n${errorData}`);
-        }
-        
-        const result = await response.json();
         console.log('API response data:', result);
         
         // 推論IDの抽出（レスポンス形式によって変わる可能性あり）

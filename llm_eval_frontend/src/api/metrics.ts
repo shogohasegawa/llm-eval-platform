@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import { Metric, MetricFormData, LeaderboardEntry, LeaderboardFilterOptions, MetricTypeInfo } from '../types/metrics';
+import { Metric, LeaderboardEntry, LeaderboardFilterOptions, MetricTypeInfo } from '../types/metrics';
 
 /**
  * 評価指標API
@@ -33,6 +33,28 @@ export const metricsApi = {
       console.error('組み込み評価指標の取得に失敗しました:', error);
       throw error;
     }
+  },
+  
+  // 指標のソースコードを取得
+  getMetricCode: async (metricName: string): Promise<{filename: string, path: string, code: string, class_name: string}> => {
+    return apiClient.get<{filename: string, path: string, code: string, class_name: string}>(`/api/v1/metrics/available/${metricName}/code`);
+  },
+  
+  // カスタム評価指標をアップロード
+  uploadMetricFile: async (file: File): Promise<{message: string, filename: string, path: string, metrics: string}> => {
+    // FormDataを使用してファイルをアップロード
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    // Content-Typeを設定しない（ブラウザが自動設定）
+    const response = await apiClient.post<{message: string, filename: string, path: string, metrics: string}>('/api/v1/metrics/upload', formData, {
+      headers: {
+        // multipart/form-dataにする必要がある（自動設定される）
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    
+    return response;
   },
 
   // カスタム評価指標一覧の取得
@@ -115,47 +137,9 @@ export const metricsApi = {
     };
   },
 
-  // 評価指標の作成
-  createMetric: async (data: MetricFormData): Promise<Metric> => {
-    // isHigherBetterを明示的にブール値として処理
-    const isHigherBetterValue = !!data.isHigherBetter;
-    
-    console.log('メトリクス作成前のデータ:', data);
-    console.log(`isHigherBetter 変換: ${data.isHigherBetter} (${typeof data.isHigherBetter}) -> ${isHigherBetterValue} (${typeof isHigherBetterValue})`);
-    
-    // 送信データを用意（明示的にブール値を設定）
-    const sendData = {
-      ...data,
-      isHigherBetter: isHigherBetterValue
-    };
-    
-    console.log('メトリクス作成送信データ:', sendData);
-    
-    return apiClient.post<Metric>('/api/v1/metrics', sendData);
-  },
-
-  // 評価指標の更新
-  updateMetric: async (id: string, data: MetricFormData): Promise<Metric> => {
-    // isHigherBetterを明示的にブール値として処理
-    const isHigherBetterValue = !!data.isHigherBetter;
-    
-    console.log('メトリクス更新前のデータ:', data);
-    console.log(`isHigherBetter 変換: ${data.isHigherBetter} (${typeof data.isHigherBetter}) -> ${isHigherBetterValue} (${typeof isHigherBetterValue})`);
-    
-    // 送信データを用意（明示的にブール値を設定）
-    const sendData = {
-      ...data,
-      isHigherBetter: isHigherBetterValue
-    };
-    
-    console.log('メトリクス更新送信データ:', sendData);
-    
-    return apiClient.put<Metric>(`/api/v1/metrics/${id}`, sendData);
-  },
-
-  // 評価指標の削除
-  deleteMetric: async (id: string): Promise<void> => {
-    return apiClient.delete<void>(`/api/v1/metrics/${id}`);
+  // カスタム評価指標を削除
+  deleteMetric: async (metricName: string): Promise<{message: string, name: string, path?: string}> => {
+    return apiClient.delete<{message: string, name: string, path?: string}>(`/api/v1/metrics/${metricName}`);
   },
 
   // リーダーボードデータの取得

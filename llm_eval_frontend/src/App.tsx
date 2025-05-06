@@ -15,6 +15,8 @@ if (import.meta.env.VITE_DEBUG_MODE === 'true') {
 }
 import Providers from './pages/Providers';
 import ProviderDetail from './pages/ProviderDetail';
+import Models from './pages/Models';
+import ModelDetail from './pages/ModelDetail';
 import Datasets from './pages/Datasets';
 import DatasetDetail from './pages/DatasetDetail';
 import Inferences from './pages/Inferences';
@@ -48,6 +50,8 @@ function App() {
                 <Route index element={<Navigate to="/providers" replace />} />
                 <Route path="providers" element={<Providers />} />
                 <Route path="providers/:id" element={<ProviderDetail />} />
+                <Route path="models" element={<Models />} />
+                <Route path="models/:id" element={<ModelDetail />} />
                 <Route path="datasets" element={<Datasets />} />
                 <Route path="datasets/:id" element={<DatasetDetail />} />
                 <Route path="inferences" element={<Inferences />} />

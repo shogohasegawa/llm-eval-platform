@@ -16,6 +16,11 @@ export interface Dataset {
   item_count?: number;
   file_path?: string;
   items: DatasetItem[];
+  // データセットレベルのプロパティ
+  instruction?: string;
+  metrics?: string[] | Record<string, any> | string;
+  output_length?: number;
+  samples?: DatasetItem[];
 }
 
 export interface DatasetItem {

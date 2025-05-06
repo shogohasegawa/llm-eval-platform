@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Box, 
   Typography, 
@@ -9,16 +9,20 @@ import {
   IconButton,
   Tooltip,
   Stack,
-  Button
+  Button,
+  Divider
 } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
 import InfoIcon from '@mui/icons-material/Info';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import StorageIcon from '@mui/icons-material/Storage';
 import HttpIcon from '@mui/icons-material/Http';
 import KeyIcon from '@mui/icons-material/Key';
+import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
 import { Model } from '../../types/provider';
 import { useProvider } from '../../hooks/useProviders';
+import OllamaModelDownloader from './OllamaModelDownloader';
 
 interface ModelCardProps {
   model: Model;
@@ -53,10 +57,12 @@ const ModelCard: React.FC<ModelCardProps> = ({
 
   console.log('Rendering model card for:', normalizedModel);
 
+  // useNavigate フックを使用
+  const navigate = useNavigate();
+  
   const handleClick = () => {
-    if (onSelect) {
-      onSelect(normalizedModel);
-    }
+    // モデル詳細ページに遷移
+    navigate(`/models/${normalizedModel.id}`);
   };
 
   const handleEdit = (e: React.MouseEvent) => {
@@ -186,6 +192,26 @@ const ModelCard: React.FC<ModelCardProps> = ({
             </Tooltip>
           )}
         </Box>
+        
+        {/* Ollamaプロバイダの場合にダウンロードボタンを表示 */}
+        {provider && provider.type === 'ollama' && (
+          <>
+            <Divider sx={{ my: 2 }} />
+            <Box 
+              display="flex" 
+              justifyContent="center" 
+              onClick={(e) => {
+                e.stopPropagation();  // カード全体のクリックイベントへの伝播を防止
+              }}
+            >
+              <OllamaModelDownloader 
+                modelId={normalizedModel.id}
+                modelName={normalizedModel.name}
+                endpoint={normalizedModel.endpoint || provider.endpoint}
+              />
+            </Box>
+          </>
+        )}
       </CardContent>
     </Card>
   );

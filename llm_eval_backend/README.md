@@ -152,16 +152,12 @@ curl -X POST "http://localhost:8000/api/evaluation/run" \
   "metrics": {
     "aio_0shot_char_f1": 0.78,
     "aio_0shot_exact_match": 0.35,
-    "aio_0shot_exact_match_error_rate": 0.0,
     "aio_2shot_char_f1": 0.82,
     "aio_2shot_exact_match": 0.41,
-    "aio_2shot_exact_match_error_rate": 0.0,
     "janli_0shot_char_f1": 0.65,
     "janli_0shot_exact_match": 0.30,
-    "janli_0shot_exact_match_error_rate": 0.0,
     "janli_2shot_char_f1": 0.70,
-    "janli_2shot_exact_match": 0.33,
-    "janli_2shot_exact_match_error_rate": 0.0
+    "janli_2shot_exact_match": 0.33
   }
 }
 ```

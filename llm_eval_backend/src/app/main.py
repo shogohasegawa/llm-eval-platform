@@ -77,7 +77,7 @@ async def startup_event():
     
     # タイムゾーン設定の確認と表示
     current_time = datetime.datetime.now()
-    current_time_utc = datetime.datetime.now(datetime.UTC)
+    current_time_utc = datetime.datetime.now(datetime.timezone.utc)
     current_time_jst = datetime.datetime.now(ZoneInfo('Asia/Tokyo'))
     
     logger.info(f"システム時間: {current_time}")

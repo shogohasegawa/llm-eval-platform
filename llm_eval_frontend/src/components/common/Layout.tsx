@@ -6,6 +6,7 @@ import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
 import CloudIcon from '@mui/icons-material/Cloud';
 import StorageIcon from '@mui/icons-material/Storage';
+import MemoryIcon from '@mui/icons-material/Memory';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import LeaderboardIcon from '@mui/icons-material/Leaderboard';
 import PsychologyIcon from '@mui/icons-material/Psychology';
@@ -55,6 +56,16 @@ const Layout: React.FC = () => {
             <CloudIcon color={isActive('/providers') ? 'primary' : undefined} />
           </ListItemIcon>
           <ListItemText primary="プロバイダ" />
+        </ListItem>
+        <ListItem 
+          button 
+          onClick={() => handleNavigation('/models')}
+          selected={isActive('/models')}
+        >
+          <ListItemIcon>
+            <MemoryIcon color={isActive('/models') ? 'primary' : undefined} />
+          </ListItemIcon>
+          <ListItemText primary="モデル" />
         </ListItem>
         <ListItem 
           button 

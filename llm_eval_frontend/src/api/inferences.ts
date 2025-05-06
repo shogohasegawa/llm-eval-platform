@@ -106,7 +106,15 @@ export const inferencesApi = {
         top_p: data.topP || 1.0,
         n_shots: data.nShots || 0,
         num_samples: data.numSamples || 100, // スネークケース版も設定
-        temperature: data.temperature || 0.7
+        temperature: data.temperature || 0.7,
+        // datasetId、providerId、modelIdプロパティを削除（重複を防ぐため）
+        datasetId: undefined,
+        providerId: undefined,
+        modelId: undefined,
+        maxTokens: undefined,
+        topP: undefined,
+        nShots: undefined,
+        numSamples: undefined
       };
       
       console.log('Processed inference data:', processedData);

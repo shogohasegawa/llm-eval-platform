@@ -91,6 +91,11 @@ def _get_datasets_from_dir(directory: Path, dataset_type: str) -> List[DatasetMe
     """
     datasets = []
     
+    # 絶対パスに変換
+    directory = directory.resolve()
+    
+    logger.info(f"データセット検索ディレクトリ: {directory}")
+    
     if not directory.exists():
         logger.warning(f"ディレクトリが存在しません: {directory}")
         return datasets
@@ -109,8 +114,13 @@ def _get_datasets_from_dir(directory: Path, dataset_type: str) -> List[DatasetMe
             
             # アイテムの数を取得
             item_count = 0
-            if isinstance(data, dict) and "items" in data and isinstance(data["items"], list):
-                item_count = len(data["items"])
+            if isinstance(data, dict):
+                if "items" in data and isinstance(data["items"], list):
+                    item_count = len(data["items"])
+                elif "samples" in data and isinstance(data["samples"], list):
+                    item_count = len(data["samples"])
+                elif "data" in data and isinstance(data["data"], list):
+                    item_count = len(data["data"])
             elif isinstance(data, list):
                 item_count = len(data)
             
@@ -186,39 +196,46 @@ def get_dataset_by_path(file_path: str) -> Optional[Dict[str, Any]]:
         # 説明文の取得（JSON内にあれば使用、なければ空文字）
         description = data.get("description", "") if isinstance(data, dict) else ""
         
+        # アイテム数の計算
+        item_count = 0
+        if isinstance(data, dict):
+            if "items" in data and isinstance(data["items"], list):
+                item_count = len(data["items"])
+            elif "samples" in data and isinstance(data["samples"], list):
+                item_count = len(data["samples"])
+            elif "data" in data and isinstance(data["data"], list):
+                item_count = len(data["data"])
+        elif isinstance(data, list):
+            item_count = len(data)
+            
         # メタデータを作成
         metadata = DatasetMetadata(
             name=data.get("name", dataset_name) if isinstance(data, dict) else dataset_name,
             description=description,
             type=dataset_type,
             created_at=datetime.fromtimestamp(path.stat().st_mtime),
-            item_count=len(data.get("items", [])) if isinstance(data, dict) else len(data) if isinstance(data, list) else 0,
+            item_count=item_count,
             file_path=file_path
         )
         
         # アイテムをDatasetItemに変換
         items = []
         
-        if isinstance(data, dict) and "items" in data and isinstance(data["items"], list):
-            # items配列がある場合
-            for idx, item in enumerate(data["items"]):
-                if isinstance(item, dict):
-                    item_id = item.get("id", f"item_{idx}")
-                    instruction = item.get("instruction", "")
-                    input_text = item.get("input", None)
-                    output = item.get("output", None)
-                    additional_data = {k: v for k, v in item.items() if k not in ["id", "instruction", "input", "output"]}
-                    
-                    items.append(DatasetItem(
-                        id=item_id,
-                        instruction=instruction,
-                        input=input_text,
-                        output=output,
-                        additional_data=additional_data
-                    ))
+        # 使用するアイテムリストを決定
+        source_items = None
+        if isinstance(data, dict):
+            if "items" in data and isinstance(data["items"], list):
+                source_items = data["items"]
+            elif "samples" in data and isinstance(data["samples"], list):
+                source_items = data["samples"]
+            elif "data" in data and isinstance(data["data"], list):
+                source_items = data["data"]
         elif isinstance(data, list):
-            # リスト形式の場合
-            for idx, item in enumerate(data):
+            source_items = data
+        
+        # アイテムリストがある場合は処理
+        if source_items is not None:
+            for idx, item in enumerate(source_items):
                 if isinstance(item, dict):
                     item_id = item.get("id", f"item_{idx}")
                     instruction = item.get("instruction", "")

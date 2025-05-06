@@ -9,7 +9,7 @@ import os
 from logging.handlers import RotatingFileHandler
 
 # ルートロガーの設定
-def setup_logging(log_level="INFO", log_dir="/app/logs"):
+def setup_logging(log_level="INFO", log_dir="../logs"):
     """
     アプリケーションのロギング設定を初期化します。
     

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Box, 
   Card, 
@@ -7,22 +7,45 @@ import {
   Button, 
   Chip, 
   Stack, 
-  IconButton 
+  IconButton,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle
 } from '@mui/material';
-import EditIcon from '@mui/icons-material/Edit';
+import CodeIcon from '@mui/icons-material/Code';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { Metric } from '../../types/metrics';
 
 interface MetricCardProps {
   metric: Metric;
-  onEdit: (metric: Metric) => void;
-  onDelete: (metricId: string) => void;
+  onEdit?: (metric: Metric) => void;
+  onDelete?: (metricId: string) => void;
+  onViewCode?: (metricName: string) => void;
 }
 
 /**
  * 評価指標情報を表示するカードコンポーネント
  */
-const MetricCard: React.FC<MetricCardProps> = ({ metric, onEdit, onDelete }) => {
+const MetricCard: React.FC<MetricCardProps> = ({ metric, onEdit, onDelete, onViewCode }) => {
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+
+  const handleDeleteClick = () => {
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = () => {
+    if (onDelete) {
+      onDelete(metric.name);
+    }
+    setDeleteDialogOpen(false);
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteDialogOpen(false);
+  };
+
   // 評価指標タイプに応じた色を設定
   const getMetricTypeColor = (type: string) => {
     switch (type) {
@@ -35,8 +58,13 @@ const MetricCard: React.FC<MetricCardProps> = ({ metric, onEdit, onDelete }) => 
       case 'rouge':
         return '#2196F3';
       case 'exact_match':
+      case 'exact_match_figure':
       case 'semantic_similarity':
+      case 'contains_answer':
         return '#9C27B0';
+      case 'char_f1':
+      case 'set_f1':
+        return '#3F51B5';
       case 'latency':
       case 'token_count':
         return '#FF9800';
@@ -62,17 +90,26 @@ const MetricCard: React.FC<MetricCardProps> = ({ metric, onEdit, onDelete }) => 
             {metric.name}
           </Typography>
           <Stack direction="row" spacing={1}>
-            <IconButton size="small" onClick={() => onEdit(metric)} aria-label="編集">
-              <EditIcon fontSize="small" />
-            </IconButton>
-            <IconButton 
-              size="small" 
-              onClick={() => onDelete(metric.id)} 
-              aria-label="削除"
-              color="error"
-            >
-              <DeleteIcon fontSize="small" />
-            </IconButton>
+            {onViewCode && (
+              <IconButton 
+                size="small" 
+                onClick={() => onViewCode(metric.name)} 
+                aria-label="コードを表示"
+                color="primary"
+              >
+                <CodeIcon fontSize="small" />
+              </IconButton>
+            )}
+            {onDelete && metric.is_custom && (
+              <IconButton 
+                size="small" 
+                onClick={handleDeleteClick} 
+                aria-label="削除"
+                color="error"
+              >
+                <DeleteIcon fontSize="small" />
+              </IconButton>
+            )}
           </Stack>
         </Box>
         
@@ -128,6 +165,31 @@ const MetricCard: React.FC<MetricCardProps> = ({ metric, onEdit, onDelete }) => 
           </Box>
         )}
       </CardContent>
+
+      {/* 削除確認ダイアログ */}
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={handleDeleteCancel}
+        aria-labelledby="alert-dialog-title"
+        aria-describedby="alert-dialog-description"
+      >
+        <DialogTitle id="alert-dialog-title">
+          評価指標の削除
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText id="alert-dialog-description">
+            評価指標「{metric.name}」を削除しますか？この操作は元に戻せません。
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleDeleteCancel} color="primary">
+            キャンセル
+          </Button>
+          <Button onClick={handleDeleteConfirm} color="error" autoFocus>
+            削除
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Card>
   );
 };

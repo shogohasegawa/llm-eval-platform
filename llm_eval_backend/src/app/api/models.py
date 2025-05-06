@@ -4,6 +4,30 @@ from datetime import datetime
 import os
 from enum import Enum
 
+# Ollamaモデルダウンロード関連モデル
+class OllamaDownloadStatus(str, Enum):
+    """Ollamaモデルダウンロードステータス列挙型"""
+    PENDING = "pending"
+    DOWNLOADING = "downloading"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+class OllamaModelDownload(BaseModel):
+    """Ollamaモデルダウンロード情報モデル"""
+    id: str
+    model_id: str
+    model_name: str
+    endpoint: str
+    status: OllamaDownloadStatus
+    progress: int = 0
+    total_size: int = 0
+    downloaded_size: int = 0
+    error: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    completed_at: Optional[datetime] = None
+    digest: Optional[str] = None
+
 
 class ModelConfig(BaseModel):
     """モデル設定"""
@@ -113,6 +137,7 @@ class MetricInfo(BaseModel):
     description: Optional[str] = None  # 評価指標の説明（あれば）
     parameters: Optional[Dict[str, MetricParameterInfo]] = None  # パラメータ定義
     is_higher_better: bool = True  # 値が高いほど良いか
+    is_custom: bool = False  # カスタム評価指標かどうか
 
 
 class MetricsListResponse(BaseModel):

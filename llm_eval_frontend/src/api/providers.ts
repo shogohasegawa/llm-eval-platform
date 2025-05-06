@@ -255,8 +255,36 @@ export const providersApi = {
 
   // プロバイダのモデル一覧の取得
   getProviderModels: async (providerId: string): Promise<Model[]> => {
-    const response = await apiClient.get<{models: Model[]}>(`/api/v1/models/by-provider/${providerId}`);
-    return response.models || [];
+    try {
+      const response = await apiClient.get<any>(`/api/v1/models/by-provider/${providerId}`);
+      console.log('Provider models API response:', response);
+      
+      // レスポンスが直接配列の場合
+      if (Array.isArray(response)) {
+        return response;
+      }
+      
+      // レスポンスがオブジェクトで'models'プロパティがある場合
+      if (response && typeof response === 'object' && 'models' in response && Array.isArray(response.models)) {
+        return response.models;
+      }
+      
+      // レスポンスがオブジェクトで、その中に配列が含まれている可能性がある場合
+      if (response && typeof response === 'object') {
+        // オブジェクトのプロパティを調べる
+        for (const key in response) {
+          if (Array.isArray(response[key])) {
+            return response[key];
+          }
+        }
+      }
+      
+      console.warn('Unexpected API response format for provider models:', response);
+      return [];
+    } catch (error) {
+      console.error('Error fetching provider models:', error);
+      return [];
+    }
   },
 
   // モデルの作成

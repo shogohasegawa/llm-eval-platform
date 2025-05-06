@@ -9,10 +9,30 @@ class ApiClient {
 
   constructor() {
     // バックエンドAPIのURL
-    // 開発環境ではプロキシを使用するため、相対パスで設定
-    this.baseURL = '';
+    // ホスト名は実行環境に合わせて決める
+    // ブラウザからアクセスするため、外部からアクセス可能なホスト名/ポートが必要
+    
+    // コンテナ名でのアクセスは不可能（ブラウザからはコンテナネットワークにアクセスできない）
+    // docker-compose.yml の port マッピングを使ってアクセスする必要がある
+    this.baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001';
+    console.log(`API Base URL: ${this.baseURL}, Environment: ${import.meta.env.MODE}`);
+    console.log(`Environment variables:`, import.meta.env);
+    
+    // バックエンドが利用可能かどうかをチェック
+    fetch(`${this.baseURL}/api/v1/metrics/available`)
+      .then(response => {
+        if (!response.ok) {
+          console.error('APIサーバーの応答が正常でありません:', response.status);
+        } else {
+          console.log('APIサーバーと接続できました');
+        }
+      })
+      .catch(error => {
+        console.error('APIサーバーへの接続エラー:', error);
+      });
     
     this.client = axios.create({
+      baseURL: this.baseURL,
       headers: {
         'Content-Type': 'application/json',
       },

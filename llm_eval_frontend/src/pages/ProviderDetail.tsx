@@ -108,9 +108,9 @@ const ProviderDetail: React.FC = () => {
   };
   
   // モデルの削除を実行
-  const handleDeleteModel = async (modelId: string) => {
+  const handleDeleteModel = async (model: Model) => {
     try {
-      await deleteModel.mutateAsync(modelId);
+      await deleteModel.mutateAsync(model.id);
     } catch (err) {
       if (err instanceof Error) {
         setError(`モデルの削除に失敗しました: ${err.message}`);
@@ -181,7 +181,6 @@ const ProviderDetail: React.FC = () => {
         <Tabs value={tabValue} onChange={handleTabChange} aria-label="provider tabs">
           <Tab label="モデル" id="tab-0" />
           <Tab label="設定" id="tab-1" />
-          <Tab label="使用履歴" id="tab-2" />
         </Tabs>
       </Box>
       
@@ -242,14 +241,6 @@ const ProviderDetail: React.FC = () => {
         </Paper>
       )}
       
-      {/* 使用履歴タブ */}
-      {tabValue === 2 && (
-        <Paper sx={{ p: 3, textAlign: 'center' }}>
-          <Typography variant="body1" color="text.secondary">
-            使用履歴はまだありません。
-          </Typography>
-        </Paper>
-      )}
       
       {/* モデル追加/編集ダイアログ */}
       <ModelFormDialog

@@ -5,11 +5,24 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 3000,
+    host: true, // Listen on all addresses
     proxy: {
-      '/api/v1': {
-        target: process.env.VITE_API_BASE_URL || 'http://localhost:8000',
+      '/api': {
+        target: process.env.VITE_API_BASE_URL || 'http://localhost:8001',
         changeOrigin: true,
         secure: false,
+        rewrite: (path) => path,
+        configure: (proxy, _options) => {
+          proxy.on('error', (err, _req, _res) => {
+            console.log('proxy error', err);
+          });
+          proxy.on('proxyReq', (proxyReq, req, _res) => {
+            console.log('Sending Request:', req.method, req.url, '→', proxyReq.path);
+          });
+          proxy.on('proxyRes', (proxyRes, req, _res) => {
+            console.log('Received Response:', req.method, req.url, '←', proxyRes.statusCode);
+          });
+        },
       },
     },
     watch: {
