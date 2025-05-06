@@ -13,18 +13,24 @@ class Settings(BaseSettings):
 
     アプリケーション全体で使用する設定パラメータを管理するクラス
     """
-    # データセットディレクトリパス
-    DATASET_DIR: Path = Path("/workspace/pf/llm-eval-platform/datasets/test/")
-    TRAIN_DIR: Path = Path("/workspace/pf/llm-eval-platform/datasets/n_shot/")
-    RESULTS_DIR: Path = Path("../../../results/")
+    # データセットディレクトリパス - 絶対パスを使用
+    project_root: Path = Path(__file__).resolve().parent.parent.parent.parent.parent
     
-    # 新しく追加するデータセット用のディレクトリパス
-    # コンテナ外の所定のディレクトリにマウントするパス
+    # 外部マウントされたデータセットディレクトリを使用
     EXTERNAL_DATASETS_DIR: Path = Path("/external_datasets")
     # テスト用データセットの保存先
     TEST_DATASETS_DIR: Path = Path("/external_datasets/test")
     # n-shot用データセットの保存先
     NSHOT_DATASETS_DIR: Path = Path("/external_datasets/n_shot")
+    
+    # 結果ディレクトリ
+    RESULTS_DIR: Path = project_root / "results/"
+    
+    # 下位互換性のために残す
+    DATASET_DIR: Path = TEST_DATASETS_DIR
+    TRAIN_DIR: Path = NSHOT_DATASETS_DIR
+    
+    # この部分は削除
 
     # APIとモデル関連
     # Ollamaのエンドポイントもデータベースから取得
@@ -78,7 +84,7 @@ class Settings(BaseSettings):
     LOG_FORMAT: str = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 
     # 環境設定
-    PROJECT_ROOT: Optional[Path] = None
+    PROJECT_ROOT: Optional[Path] = Path('../')  # 明示的にllm_eval_backendの親ディレクトリを指定
     ENV: str = "development"  # development, staging, production
 
     class Config:
@@ -91,16 +97,13 @@ class Settings(BaseSettings):
         """
         必要なディレクトリを初期化する
         """
+        # 必要なディレクトリを作成
         self.RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-
-        # プロジェクトルートが設定されている場合、結果ディレクトリを調整
-        if self.PROJECT_ROOT:
-            self.RESULTS_DIR = self.PROJECT_ROOT / "results"
-            self.RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-        
-        # データセット用ディレクトリを初期化
         self.TEST_DATASETS_DIR.mkdir(parents=True, exist_ok=True)
         self.NSHOT_DATASETS_DIR.mkdir(parents=True, exist_ok=True)
+        
+        print(f"テストデータセットディレクトリ: {self.TEST_DATASETS_DIR.resolve()}")
+        print(f"n-shotデータセットディレクトリ: {self.NSHOT_DATASETS_DIR.resolve()}")
 
     def get_provider_settings(self, provider_name: str) -> Dict[str, Any]:
         """

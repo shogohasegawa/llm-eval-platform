@@ -79,13 +79,22 @@ async def get_few_shot_samples(dataset_name: str, n_shots: int) -> List[Dict[str
 
     # データセット名からパスを合成（run_evaluationと同様の処理）
     if '/' in dataset_name:
+        # パスが含まれている場合はそのまま使用
+        if dataset_name.endswith('.json'):
+            # 完全なパスとして扱う
+            dataset_path = Path(dataset_name)
+        else:
+            # パスが含まれているが拡張子がない場合
+            dataset_path = Path(f"{dataset_name}.json")
         base_name = dataset_name.split('/')[-1]
         if base_name.endswith('.json'):
             base_name = base_name[:-5]  # .jsonを削除
     else:
+        # データセット名のみの場合
         base_name = dataset_name
-
-    dataset_path = settings.TRAIN_DIR / f"{base_name}.json"
+        # 絶対パスで生成
+        dataset_path = settings.NSHOT_DATASETS_DIR / f"{base_name}.json"
+    
     logger.info(f"Looking for few-shot data at: {dataset_path}")
 
     with dataset_path.open(encoding="utf-8") as f:
@@ -671,13 +680,22 @@ async def run_evaluation(
     # データセット名からパスを合成
     # もしdataset_nameが既にパスの場合（例：datasets/test/aio_1）は、ファイル名部分だけを抽出
     if '/' in dataset_name:
+        # パスが含まれている場合はそのまま使用
+        if dataset_name.endswith('.json'):
+            # 完全なパスとして扱う
+            dataset_path = Path(dataset_name)
+        else:
+            # パスが含まれているが拡張子がない場合
+            dataset_path = Path(f"{dataset_name}.json")
         base_name = dataset_name.split('/')[-1]
         if base_name.endswith('.json'):
             base_name = base_name[:-5]  # .jsonを削除
     else:
+        # データセット名のみの場合
         base_name = dataset_name
-
-    dataset_path = settings.DATASET_DIR / f"{base_name}.json"
+        # 絶対パスで生成
+        dataset_path = settings.TEST_DATASETS_DIR / f"{base_name}.json"
+    
     logger.info(f"Looking for dataset at: {dataset_path}")
     batch_size = settings.BATCH_SIZE
 
@@ -754,15 +772,12 @@ async def run_evaluation(
                 if scores:  # エラーを除いたスコアがある場合のみ平均を計算
                     avg_score = sum(scores) / len(scores)
                     all_results[f"{dataset_name}_{shot}shot_{metric_name}"] = avg_score
-                    # エラー率も記録
-                    all_results[f"{dataset_name}_{shot}shot_{metric_name}_error_rate"] = error_count / len(shot_results)
                     
                     # パラメータ情報も記録（あれば）
                     if metric_name in metrics_parameters:
                         all_results[f"{dataset_name}_{shot}shot_{metric_name}_parameters"] = metrics_parameters[metric_name]
                 else:
                     all_results[f"{dataset_name}_{shot}shot_{metric_name}"] = 0
-                    all_results[f"{dataset_name}_{shot}shot_{metric_name}_error_rate"] = 1.0
             else:
                 logger.warning(f"Metric '{metric_name}' specified in dataset but not found in registry")
 
@@ -779,13 +794,9 @@ async def run_evaluation(
         # all_results のキーから実際に測定された指標だけ追加
         prefix = f"{dataset_name}_{shot}shot_"
         for key, value in all_results.items():
-            if key.startswith(prefix) and not key.endswith("_details") and not key.endswith("_error_rate"):
+            if key.startswith(prefix) and not key.endswith("_details"):
                 metric_name = key[len(prefix):]
                 row[metric_name] = value
-                # エラー率も追加
-                error_rate_key = f"{prefix}{metric_name}_error_rate"
-                if error_rate_key in all_results:
-                    row[f"{metric_name}_error_rate"] = all_results[error_rate_key]
         summary.append(row)
 
     return {

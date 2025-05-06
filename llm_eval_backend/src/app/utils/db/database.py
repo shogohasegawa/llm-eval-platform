@@ -37,10 +37,13 @@ class DatabaseManager:
         if self._initialized:
             return
         
-        # デフォルトではコンテナ外の /external_data にデータベースファイルを保存
+        # デフォルトではマウントされたexternal_dataディレクトリにデータベースファイルを保存
+        # Docker環境ではマウントポイントを使用
+        default_db_path = "/external_data/llm_eval.db"
+        
         self.db_path = db_path or os.environ.get(
             "LLMEVAL_DB_PATH", 
-            "/external_data/llm_eval.db"
+            default_db_path
         )
         
         # ディレクトリが存在しない場合は作成
