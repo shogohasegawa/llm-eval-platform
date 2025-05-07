@@ -112,70 +112,94 @@ cd llm-eval-platform
 
 ## ステップ2：CPUインスタンスのセットアップ
 
-1. メイン環境設定ファイルを作成：
+### 2.1. メイン環境設定ファイル（.env）の作成と編集
 
 ```bash
 # CPU側の環境設定ファイルの例をコピー
 cp .env.cpu.example .env
 
-# 実際のGPUインスタンスIPで.envファイルを編集
+# 実際の値で.envファイルを編集
 nano .env
 ```
 
-**重要な設定項目：**
-- `GPU_INSTANCE_IP`：GPUインスタンスの公開IPアドレスまたはプライベートIPを設定
-- `API_BASE_URL`：自身のIPアドレスを指定（例: `http://your-cpu-instance-ip:8001`）
+#### 必須の設定項目：
 
-2. バックエンド用の環境設定が既に存在しており、必要に応じて調整します：
+| 設定項目 | 説明 | 設定例 | 必須/任意 |
+|---------|------|--------|----------|
+| `GPU_INSTANCE_IP` | GPUインスタンスのIPアドレス | `10.0.1.5`または公開IP | **必須** |
+| `OLLAMA_BASE_URL` | OllamaサービスのURL | `http://${GPU_INSTANCE_IP}:11434` | **必須** |
+| `VITE_OLLAMA_BASE_URL` | フロントエンド用Ollama URL | `${OLLAMA_BASE_URL}` | **必須** |
+| `API_BASE_URL` | APIサーバーのURL | `http://your-cpu-instance-ip:8001` | **必須** |
+| `MLFLOW_HOST` | MLflowサーバーのホスト名 | `mlflow`（デフォルト） | 任意 |
+| `MLFLOW_PORT` | MLflowサーバーのポート | `5000`（デフォルト） | 任意 |
+| `LLMEVAL_ENV` | 環境設定 | `production` | 任意 |
+| `TZ` | タイムゾーン | `Asia/Tokyo` | 任意 |
+
+このうち、**必ず変更するべき設定項目**は:
+- `GPU_INSTANCE_IP`: あなたのGPUインスタンスの実際のIPアドレスに変更
+- `API_BASE_URL`: CPUインスタンスの公開IPまたはドメイン名を指定
+
+### 2.2. バックエンド環境設定ファイルの編集
 
 ```bash
-# 既存のサンプル設定をチェック
-cat llm_eval_backend/.env.sample
+# 既存のサンプル設定ファイルをコピー
+cp llm_eval_backend/.env.sample llm_eval_backend/.env
 
 # 必要に応じて編集
 nano llm_eval_backend/.env
 ```
 
-**主な設定項目：**
-- `LLMEVAL_DATASET_DIR`：データセットディレクトリパス（通常は`/external_datasets/test/`）
-- `LLMEVAL_TRAIN_DIR`：訓練データセットディレクトリパス（通常は`/external_datasets/n_shot/`）
-- `LLMEVAL_MLFLOW_TRACKING_URI`：MLflowサーバーのURI（通常は`http://mlflow:5000`）
+#### 主要な設定項目：
 
-3. CPUインスタンスのコンポーネントを実行：
+| 設定項目 | 説明 | 設定例 | 必須/任意 |
+|---------|------|--------|----------|
+| `LLMEVAL_DATASET_DIR` | データセットディレクトリ | `/external_datasets/test/` | **必須** |
+| `LLMEVAL_TRAIN_DIR` | 訓練データセットディレクトリ | `/external_datasets/n_shot/` | **必須** |
+| `LLMEVAL_MLFLOW_TRACKING_URI` | MLflowサーバーのURI | `http://mlflow:5000` | **必須** |
+| `LLMEVAL_DEFAULT_MAX_TOKENS` | 最大トークン数 | `1024` | 任意 |
+| `LLMEVAL_DEFAULT_TEMPERATURE` | 温度パラメータ | `0.0` | 任意 |
+| `LLMEVAL_MODEL_TIMEOUT` | モデルタイムアウト時間（秒） | `60.0` | 任意 |
+| `LLMEVAL_LOG_LEVEL` | ログレベル | `INFO` | 任意 |
+
+**注意点：**
+- `LLMEVAL_DATASET_DIR`と`LLMEVAL_TRAIN_DIR`はコンテナ内のパスを指定し、通常は`/external_datasets/test/`と`/external_datasets/n_shot/`にマウントされます。
+- `docker-compose.cpu.yml`ファイル内のボリュームマウント設定と整合性を取る必要があります。
+
+### 2.3. CPUインスタンスのコンポーネントを実行
 
 ```bash
 docker-compose -f docker-compose.cpu.yml up -d
 ```
 
-これにより以下が起動します：
-- フロントエンド（ポート4173）
-- API（ポート8001）
-- MLflow（ポート5000）
-
 ## ステップ3：GPUインスタンスのセットアップ
 
-1. 環境設定ファイルを作成：
+### 3.1. 環境設定ファイルの作成と編集
 
 ```bash
 # GPU側の環境設定ファイルの例をコピー
 cp .env.gpu.example .env
 
-# 必要に応じて.envファイルを編集
+# 実際の値で.envファイルを編集
 nano .env
 ```
 
-**重要な設定項目：**
-- `GPU_COUNT`：使用するGPUの数（通常は1）
-- `OLLAMA_HOST`：通常は`0.0.0.0`を指定（すべてのネットワークインターフェースでリッスン）
+#### 必須の設定項目：
 
-2. GPUインスタンスでOllamaを実行：
+| 設定項目 | 説明 | 設定例 | 必須/任意 |
+|---------|------|--------|----------|
+| `GPU_COUNT` | 使用するGPUの数 | `1` | **必須** |
+| `OLLAMA_HOST` | Ollamaがバインドするアドレス | `0.0.0.0` | **必須** |
+| `OLLAMA_MODELS_PATH` | モデルの保存先 | `/root/.ollama` | 任意 |
+
+**注意点：**
+- `OLLAMA_HOST`は通常`0.0.0.0`を設定し、すべてのネットワークインターフェースでリッスンするようにします。
+- `GPU_COUNT`はインスタンスが持つGPUの数に応じて設定します（通常は1）。
+
+### 3.2. GPUインスタンスでOllamaを実行
 
 ```bash
 docker-compose -f docker-compose.gpu.yml up -d
 ```
-
-これにより以下が起動します：
-- GPU対応のOllama（ポート11434）
 
 ## ステップ4：接続の確認
 
@@ -203,27 +227,72 @@ http://<cpu-instance-ip>:4173
 
 すべてのサービスを1台のサーバー（できればGPU搭載）で実行する場合：
 
-1. 環境設定ファイルを作成：
+### 5.1. 環境設定ファイルの作成と編集
 
 ```bash
 # メイン環境設定ファイルをコピー
 cp .env.full.example .env
 
-# バックエンド設定を必要に応じて調整
-cat llm_eval_backend/.env.sample
-nano llm_eval_backend/.env
+# バックエンド設定ファイルをコピー
+cp llm_eval_backend/.env.sample llm_eval_backend/.env
 
-# 必要に応じて.envファイルを編集
+# 必要に応じて編集
 nano .env
+nano llm_eval_backend/.env
 ```
 
-2. すべてのサービスを起動：
+#### メイン環境設定ファイル（.env）の主要項目：
+
+| 設定項目 | 説明 | 設定例 | 必須/任意 |
+|---------|------|--------|----------|
+| `API_BASE_URL` | APIサーバーのURL | 空白（相対パス使用） | 任意 |
+| `VITE_API_BASE_URL` | フロントエンド用API URL | 空白（相対パス使用） | 任意 |
+| `VITE_OLLAMA_BASE_URL` | フロントエンド用Ollama URL | 空白（相対パス使用） | 任意 |
+| `OLLAMA_BASE_URL` | OllamaサービスのURL | `http://ollama:11434` | 任意 |
+| `OLLAMA_HOST` | Ollamaがバインドするアドレス | `0.0.0.0` | 任意 |
+| `GPU_COUNT` | 使用するGPUの数 | `1` | **必須** |
+
+#### バックエンド設定ファイル（llm_eval_backend/.env）の主要項目：
+- 前述のCPUインスタンスの設定と同様です。
+
+### 5.2. すべてのサービスを起動
 
 ```bash
 docker-compose -f docker-compose.full.yml up -d
 ```
 
-注意：GPUがないマシンで実行する場合は、`docker-compose.full.yml`ファイル内のGPU関連の設定（`runtime: nvidia`行と`NVIDIA_VISIBLE_DEVICES`環境変数）をコメントアウトしてください。
+**注意：**GPUがないマシンで実行する場合は、`docker-compose.full.yml`ファイル内のGPU関連の設定をコメントアウトしてください：
+
+```yaml
+# 以下の行をコメントアウト
+# runtime: nvidia
+# environment:
+#   - NVIDIA_VISIBLE_DEVICES=all
+```
+
+## Docker Composeファイルの構成
+
+デプロイには3つの異なるDocker Composeファイルを使用します。それぞれの役割を理解すると設定が容易になります：
+
+### docker-compose.cpu.yml
+- **用途**: CPUインスタンス用（フロントエンド、API、MLflow）
+- **重要な設定**:
+  - ボリュームマウント（`./datasets:/external_datasets`など）
+  - APIサービスの`depends_on`設定（Ollamaは含まれない）
+  - MLflowの設定（`--serve-artifacts`フラグが重要）
+
+### docker-compose.gpu.yml
+- **用途**: GPUインスタンス用（Ollamaのみ）
+- **重要な設定**:
+  - NVIDIAドライバのサポート（`runtime: nvidia`）
+  - GPU数の設定（`count: ${GPU_COUNT:-1}`）
+  - ボリューム設定（`ollama_data:/root/.ollama`）
+
+### docker-compose.full.yml
+- **用途**: 単一サーバーデプロイ用（すべてのサービス）
+- **重要な設定**:
+  - すべてのサービスが相互に接続するための設定
+  - ネットワーク設定が単一のネットワークに統合されている
 
 ## トラブルシューティング
 
