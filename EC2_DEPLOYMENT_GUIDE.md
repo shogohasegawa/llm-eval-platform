@@ -38,16 +38,70 @@
 
 ## 事前準備
 
-- EC2インスタンス：
-  - CPUインスタンス（例：t3.xlarge）：フロントエンド、API、MLflow用
-  - GPUインスタンス（例：g4dn.xlarge）：Ollama用
-- 両インスタンスにDockerとDocker Composeをインストール
-- GPUインスタンスにはNVIDIAドライバとDockerのGPUサポートをインストール
-- 以下のポートを許可するようにセキュリティグループを設定：
-  - ポート4173（フロントエンド）
-  - ポート8001（API）
-  - ポート5000（MLflow）
-  - ポート11434（Ollama）
+### EC2インスタンスの準備
+
+1. **CPUインスタンス**（例：t3.xlarge）
+   - 必要なスペック：少なくとも4 vCPU、16GB RAM
+   - ストレージ：最低30GB（モデルの保存に応じて拡張）
+   - AMI：Amazon Linux 2023またはUbuntu 22.04 LTS
+
+2. **GPUインスタンス**（例：g4dn.xlarge）
+   - 必要なスペック：NVIDIA GPUを搭載したインスタンス
+   - ストレージ：最低50GB（Ollamaモデルの保存に応じて拡張）
+   - AMI：Deep Learning AMI (Ubuntu 22.04)または独自にドライバをインストール
+
+### セキュリティグループの設定
+
+両方のインスタンスに以下のポートを開放します：
+
+- **CPUインスタンス**
+  - ポート4173（フロントエンド）- インターネットからアクセス可能に
+  - ポート8001（API）- インターネットからアクセス可能に
+  - ポート5000（MLflow）- インターネットからアクセス可能に（または必要に応じて制限）
+  - ポート22（SSH）- 管理用
+
+- **GPUインスタンス**
+  - ポート11434（Ollama）- CPUインスタンスからアクセス可能に
+  - ポート22（SSH）- 管理用
+
+### 必要なソフトウェアのインストール
+
+#### CPUインスタンスの設定
+
+```bash
+# Dockerのインストール（Ubuntuの場合）
+sudo apt update
+sudo apt install -y docker.io docker-compose
+
+# Dockerサービスの開始と自動起動設定
+sudo systemctl start docker
+sudo systemctl enable docker
+
+# 現在のユーザーをdockerグループに追加（再ログイン必要）
+sudo usermod -aG docker $USER
+```
+
+#### GPUインスタンスの設定
+
+```bash
+# NVIDIA Driverとコンテナツールキットのインストール（Ubuntuの場合）
+sudo apt update
+sudo apt install -y docker.io docker-compose
+
+# NVIDIAドライバとCUDAのインストール（Deep Learning AMIを使わない場合）
+sudo apt install -y nvidia-driver-535 nvidia-cuda-toolkit
+
+# NVIDIA Container Toolkitのインストール
+distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
+curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add -
+curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | sudo tee /etc/apt/sources.list.d/nvidia-docker.list
+sudo apt update
+sudo apt install -y nvidia-container-toolkit
+sudo systemctl restart docker
+
+# 動作確認
+sudo docker run --rm --gpus all nvidia/cuda:11.8.0-base-ubuntu22.04 nvidia-smi
+```
 
 ## ステップ1：両インスタンスにリポジトリをクローン
 
@@ -61,14 +115,28 @@ cd llm-eval-platform
 1. 環境設定ファイルを作成：
 
 ```bash
-# 設定ファイルの例をコピー
+# CPU側の環境設定ファイルの例をコピー
 cp .env.cpu.example .env
 
 # 実際のGPUインスタンスIPで.envファイルを編集
 nano .env
 ```
 
-2. CPUインスタンスのコンポーネントを実行：
+**重要な設定項目：**
+- `GPU_INSTANCE_IP`：GPUインスタンスの公開IPアドレスまたはプライベートIPを設定
+- `API_BASE_URL`：コメントを外して、自身のIPアドレスを指定（例: `http://your-cpu-instance-ip:8001`）
+
+2. バックエンド用の環境設定ファイルを作成：
+
+```bash
+# バックエンド用の環境設定ファイルを作成（必要な場合）
+cat > ./llm_eval_backend/.env << 'EOF'
+# APIバックエンド用の環境設定
+# 特に必要な設定がない場合は空でもOK
+EOF
+```
+
+3. CPUインスタンスのコンポーネントを実行：
 
 ```bash
 docker-compose -f docker-compose.cpu.yml up -d
@@ -84,12 +152,16 @@ docker-compose -f docker-compose.cpu.yml up -d
 1. 環境設定ファイルを作成：
 
 ```bash
-# 設定ファイルの例をコピー
+# GPU側の環境設定ファイルの例をコピー
 cp .env.gpu.example .env
 
 # 必要に応じて.envファイルを編集
 nano .env
 ```
+
+**重要な設定項目：**
+- `GPU_COUNT`：使用するGPUの数（通常は1）
+- `OLLAMA_HOST`：通常は`0.0.0.0`を指定（すべてのネットワークインターフェースでリッスン）
 
 2. GPUインスタンスでOllamaを実行：
 
@@ -130,6 +202,9 @@ http://<cpu-instance-ip>:4173
 
 ```bash
 cp .env.full.example .env
+
+# 必要に応じて.envファイルを編集
+nano .env
 ```
 
 2. すべてのサービスを起動：
@@ -138,7 +213,7 @@ cp .env.full.example .env
 docker-compose -f docker-compose.full.yml up -d
 ```
 
-注意：GPUがないマシンで実行する場合は、`docker-compose.full.yml`ファイル内のGPU関連の設定をコメントアウトしてください。
+注意：GPUがないマシンで実行する場合は、`docker-compose.full.yml`ファイル内のGPU関連の設定（`runtime: nvidia`行と`NVIDIA_VISIBLE_DEVICES`環境変数）をコメントアウトしてください。
 
 ## トラブルシューティング
 
@@ -147,6 +222,7 @@ docker-compose -f docker-compose.full.yml up -d
 - セキュリティグループが必要なポートでインスタンス間のトラフィックを許可していることを確認
 - 両インスタンスが互いにpingできることを確認
 - Ollamaが`0.0.0.0`（すべてのインターフェース）にバインドしていることを確認
+- VPC内でプライベートIPを使用している場合、正しいサブネット設定かを確認
 
 ### よくある問題
 
@@ -154,14 +230,36 @@ docker-compose -f docker-compose.full.yml up -d
    - GPUインスタンスで正しいOllamaサービスが実行されていることを確認
    - セキュリティグループでポート11434がアクセス可能であることを確認
    - .envファイル内のOLLAMA_BASE_URLが正しいことを確認
+   ```bash
+   # GPUインスタンスでのOllamaサービス状態確認
+   docker ps | grep ollama
+   docker logs ollama
+   ```
 
 2. **「MLflowの実行詳細を読み込めない」**:
    - MLflowが適切に構成されアクセス可能であることを確認
    - MLflowサーバーがアーティファクトディレクトリに書き込めることを確認
+   ```bash
+   # MLflowサービス状態確認
+   docker logs llm-eval-platform_mlflow_1
+   ```
 
 3. **「GPUエラー：nvidia-container-cli〜」**:
    - NVIDIA Container Toolkitが正しくインストールされていることを確認
    - CPUのみの環境では、GPU設定をコメントアウトして実行
+   ```bash
+   # GPUドライバ確認
+   nvidia-smi
+   # NVIDIA Docker確認
+   sudo docker run --rm --gpus all nvidia/cuda:11.8.0-base-ubuntu22.04 nvidia-smi
+   ```
+
+4. **「APIサーバーに接続できない」**:
+   - APIサービスが正常に起動していることを確認
+   - 環境変数の設定が正しいことを確認
+   ```bash
+   docker logs llm-eval-platform_api_1
+   ```
 
 ## 高度な設定
 
@@ -179,15 +277,21 @@ IPアドレスの代わりにドメイン名を使用したい場合：
 
 1. CPUインスタンスにNGINXをインストール
 2. フロントエンド、API、MLflow用のリバースプロキシとしてNGINXを設定
+   ```bash
+   sudo apt install -y nginx certbot python3-certbot-nginx
+   ```
 3. Let's Encryptを使用して無料のSSL証明書を取得
+   ```bash
+   sudo certbot --nginx -d your-domain.com
+   ```
 
 ### 複数のGPUインスタンスのロードバランシング
 
 複数のGPUインスタンスでスケーリングする場合：
 
 1. 複数のGPUインスタンスにOllamaをデプロイ
-2. リクエストを分散するためのロードバランサーを設定
-3. APIがロードバランサーエンドポイントを使用するよう設定
+2. HAProxyまたはNGINXでリクエストを分散するためのロードバランサーを設定
+3. CPUインスタンスの`.env`ファイルで、`OLLAMA_BASE_URL`をロードバランサーのエンドポイントに設定
 
 ## メンテナンスと更新
 
@@ -210,6 +314,11 @@ docker-compose -f <使用中の設定ファイル> up -d --build
 - データセット：`./datasets/`
 - Ollamaモデル：Dockerボリューム`ollama_data`
 
+```bash
+# Dockerボリュームのバックアップ例
+docker run --rm -v ollama_data:/data -v $(pwd):/backup alpine tar -czvf /backup/ollama_data_backup.tar.gz /data
+```
+
 ## モニタリングとロギング
 
 - トラブルシューティングのためのDockerログの確認：
@@ -220,6 +329,11 @@ docker-compose -f <使用中の設定ファイル> up -d --build
   ```
 
 - EC2インスタンスのCloudWatchモニタリングを設定（本番環境推奨）
+  ```bash
+  # CloudWatchエージェントのインストール例
+  sudo amazon-linux-extras install -y collectd
+  sudo amazon-linux-extras install -y amazon-cloudwatch-agent
+  ```
 
 ## セキュリティに関する考慮事項
 
@@ -227,6 +341,7 @@ docker-compose -f <使用中の設定ファイル> up -d --build
 - 可能な場合はEC2インスタンスにAWS IAMロールを使用
 - インスタンス間のプライベートネットワークにVPCの使用を検討
 - Dockerイメージとシステムパッケージを定期的に更新
+- ファイアウォールルールを最小権限の原則で設定
 
 ## コスト最適化
 
@@ -234,3 +349,4 @@ docker-compose -f <使用中の設定ファイル> up -d --build
 - 未使用時はGPUインスタンスを停止することを検討
 - 負荷に基づいてCPUインスタンスのオートスケーリングを使用
 - EBSボリュームを監視してストレージコストを最適化
+- リザーブドインスタンスまたはSavings Plansを検討（長期運用の場合）
