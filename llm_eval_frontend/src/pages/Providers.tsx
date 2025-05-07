@@ -185,10 +185,8 @@ const Providers: React.FC = () => {
   // モデルの削除を実行
   const handleDeleteModel = async (model: Model) => {
     try {
-      await deleteModel.mutateAsync({
-        modelId: model.id,
-        providerId: model.providerId
-      });
+      // モデルIDが必要なので、modelIdフィールドではなくidフィールドを直接使用
+      await deleteModel.mutateAsync(model.id);
     } catch (err) {
       if (err instanceof Error) {
         setError(`モデルの削除に失敗しました: ${err.message}`);

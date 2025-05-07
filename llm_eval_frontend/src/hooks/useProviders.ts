@@ -159,7 +159,13 @@ export const useDeleteModel = (providerId: string) => {
   const queryClient = useQueryClient();
   
   return useMutation<void, Error, string>({
-    mutationFn: (modelId) => providersApi.deleteModel(modelId),
+    mutationFn: (modelId) => {
+      if (typeof modelId !== 'string') {
+        console.error('Invalid modelId, expected string but got:', modelId);
+        return Promise.reject(new Error('無効なモデルIDです'));
+      }
+      return providersApi.deleteModel(modelId);
+    },
     onSuccess: () => {
       // 成功時にモデル一覧を再取得
       queryClient.invalidateQueries({ queryKey: ['models'] });
