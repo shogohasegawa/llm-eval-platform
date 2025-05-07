@@ -424,26 +424,12 @@ const DatasetDetail: React.FC = () => {
         </Card>
       )}
 
-      <Box sx={{ mb: 3 }}>
-        <Typography variant="h5" component="h2" gutterBottom>
-          データセットアイテム
-        </Typography>
-        
-        <Typography variant="subtitle1" color="text.secondary" gutterBottom>
-          アイテム数: {enhancedDataset.items.length}
-        </Typography>
-        
-        {/* パフォーマンス警告 */}
-        {enhancedDataset.items.length > 100 && (
-          <Alert severity="info" sx={{ mb: 2 }}>
-            このデータセットには {enhancedDataset.items.length} アイテムが含まれています。
-            パフォーマンスを向上させるため、最初の 50 アイテムのみを表示しています。
-          </Alert>
-        )}
-      </Box>
+      <Typography variant="h5" component="h2" gutterBottom>
+        データセットアイテム
+      </Typography>
 
       <Grid container spacing={3}>
-        {enhancedDataset.items.slice(0, 50).map((item: DatasetItem) => (
+        {enhancedDataset.items.map((item: DatasetItem) => (
           <Grid item xs={12} key={item.id}>
             <Paper 
               sx={{ 
@@ -508,15 +494,15 @@ const DatasetDetail: React.FC = () => {
                         <Typography variant="subtitle2" color="primary.dark" gutterBottom>
                           指示:
                         </Typography>
-                        <Typography paragraph>{truncateText(item.instruction, 500)}</Typography>
+                        <Typography paragraph>{item.instruction}</Typography>
                         <Divider sx={{ my: 1 }} />
                         <Typography variant="subtitle2" color="primary.dark" gutterBottom>
                           入力内容:
                         </Typography>
-                        {truncateText(item.input, 500)}
+                        {item.input}
                       </>
                     ) : (
-                      truncateText(item.input, 500)
+                      item.input
                     )}
                   </Paper>
                 </Box>
@@ -526,7 +512,7 @@ const DatasetDetail: React.FC = () => {
                     指示
                   </Typography>
                   <Paper variant="outlined" sx={{ p: 2, backgroundColor: '#f8f9fa', whiteSpace: 'pre-wrap' }}>
-                    {truncateText(item.instruction, 500)}
+                    {item.instruction}
                   </Paper>
                 </Box>
               ) : null}
@@ -538,7 +524,7 @@ const DatasetDetail: React.FC = () => {
                     出力
                   </Typography>
                   <Paper variant="outlined" sx={{ p: 2, backgroundColor: '#fcf8e3', whiteSpace: 'pre-wrap' }}>
-                    {truncateText(item.output, 500)}
+                    {item.output}
                   </Paper>
                 </Box>
               )}
@@ -566,20 +552,13 @@ const DatasetDetail: React.FC = () => {
                   </Typography>
                   
                   {expandedItems[item.id] && (
-                    <Paper variant="outlined" sx={{ p: 2, backgroundColor: '#f0f0f0', overflow: 'auto', maxHeight: '200px' }}>
+                    <Paper variant="outlined" sx={{ p: 2, backgroundColor: '#f0f0f0', overflow: 'auto' }}>
                       <pre>
                         {formatJson(
                           Object.fromEntries(
                             Object.entries(item.additional_data)
                               .filter(([key]) => !['metrics', 'output_length'].includes(key))
                           )
-                        ).substring(0, 1000) + (
-                          formatJson(
-                            Object.fromEntries(
-                              Object.entries(item.additional_data)
-                                .filter(([key]) => !['metrics', 'output_length'].includes(key))
-                            )
-                          ).length > 1000 ? "..." : ""
                         )}
                       </pre>
                     </Paper>
@@ -589,20 +568,6 @@ const DatasetDetail: React.FC = () => {
             </Paper>
           </Grid>
         ))}
-        
-        {/* 表示の制限を超えるアイテム数がある場合 */}
-        {enhancedDataset.items.length > 50 && (
-          <Grid item xs={12}>
-            <Paper sx={{ p: 3, textAlign: 'center', borderStyle: 'dashed' }}>
-              <Typography variant="body1" color="text.secondary">
-                表示制限: 合計 {enhancedDataset.items.length} アイテム中 50 アイテムを表示しています。
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                大量のアイテムを含むデータセットはパフォーマンスに影響する可能性があります。
-              </Typography>
-            </Paper>
-          </Grid>
-        )}
       </Grid>
     </Box>
   );
