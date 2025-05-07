@@ -184,35 +184,52 @@ async def log_evaluation_results(model_name: str, metrics: Dict[str, float]) -> 
                                 # 重複したn_shot情報をチェック（例: "aio_0shot_aio_0shot_char_f1"）
                                 shot_patterns = ["_0shot_", "_1shot_", "_2shot_", "_3shot_", "_4shot_", "_5shot_"]
                                 
-                                if any(shot in key for shot in shot_patterns):
-                                    # 重複を検出しようと試みる
-                                    try:
-                                        # '_0shot_'などの最初の出現位置を見つける
-                                        match_positions = []
-                                        for pattern in shot_patterns:
-                                            pos = key.find(pattern)
-                                            if pos != -1:
-                                                match_positions.append((pos, pattern))
+                                try:
+                                    # 重複を検出する
+                                    logger.info(f"📊 メトリクス名チェック: {key}")
+                                    
+                                    # 各ショットパターンの出現回数をカウント
+                                    pattern_counts = {}
+                                    for pattern in shot_patterns:
+                                        count = key.count(pattern)
+                                        if count > 0:
+                                            pattern_counts[pattern] = count
+                                    
+                                    # 重複があるか確認
+                                    duplicate_patterns = {p: c for p, c in pattern_counts.items() if c > 1}
+                                    if duplicate_patterns:
+                                        logger.info(f"📊 重複パターン検出: {duplicate_patterns} in '{key}'")
                                         
-                                        if match_positions:
-                                            # 最初に出現するパターンを使用
-                                            first_pos, first_pattern = min(match_positions, key=lambda x: x[0])
+                                        # 例: "aio_0shot_aio_0shot_char_f1" → "aio_0shot_char_f1"
+                                        pattern = next(iter(duplicate_patterns.keys()))  # 最初の重複パターン
+                                        
+                                        # キーを分割してデータセット名とメトリクス名を抽出
+                                        parts = key.split(pattern)
+                                        if len(parts) >= 2:
+                                            # 最初のデータセット名と最後のメトリクス名を使用
+                                            dataset_name = parts[0]
+                                            metric_part = parts[-1]
                                             
-                                            # 重複がある場合は正規化
-                                            if shot_patterns.count(first_pattern) > 1:
-                                                # データセット名を取得
-                                                dataset_name = key[:first_pos]
-                                                
-                                                # メトリクス名を取得（最後の部分）
-                                                metric_part = key.split("_")[-1]
-                                                
-                                                # 新しい正規化されたキー
-                                                normalized_key = f"{dataset_name}{first_pattern}{metric_part}"
-                                                
-                                                cleaned_metrics[normalized_key] = value
+                                            # 新しい正規化されたキー
+                                            normalized_key = f"{dataset_name}{pattern}{metric_part}"
+                                            logger.info(f"📊 正規化: '{key}' → '{normalized_key}'")
+                                            
+                                            cleaned_metrics[normalized_key] = value
+                                            continue
+                                    else:
+                                        # 重複はないが、shotパターンが含まれている場合
+                                        # パターンが1つだけ含まれている場合に正規化
+                                        if len(pattern_counts) == 1:
+                                            pattern = next(iter(pattern_counts.keys()))
+                                            
+                                            # すでに正規化された形式になっているか確認
+                                            parts = key.split(pattern)
+                                            if len(parts) == 2:
+                                                logger.info(f"📊 既に正規化済み: '{key}'")
+                                                cleaned_metrics[key] = value
                                                 continue
-                                    except Exception:
-                                        pass
+                                except Exception as e:
+                                    logger.warning(f"📊 メトリクス名チェック中にエラー: {str(e)}")
                                 
                                 # 問題がなければそのまま追加
                                 cleaned_metrics[key] = value
