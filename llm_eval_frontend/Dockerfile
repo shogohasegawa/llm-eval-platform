@@ -14,5 +14,5 @@ RUN npm install
 # ソースコードをコピー
 COPY . .
 
-# Vite の開発サーバーを使用（本番でも開発モード）
-CMD ["npm", "run", "start"]
+# Vite の開発サーバーを使用（ネットワークアクセス可能に設定）
+CMD ["npx", "vite", "--host", "0.0.0.0", "--port", "3000"]

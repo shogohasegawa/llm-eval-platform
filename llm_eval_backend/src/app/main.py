@@ -30,12 +30,23 @@ logger = logging.getLogger("llmeval")
 app = FastAPI(title="LLM Evaluation API")
 
 # CORS設定（React Appとの連携用）
+# 環境変数から許可するオリジンを読み込む
+cors_origins = os.environ.get("CORS_ORIGINS", "*")
+if cors_origins == "*":
+    origins = ["*"]
+else:
+    origins = [origin.strip() for origin in cors_origins.split(",")]
+
+logger.info(f"CORS設定: 許可オリジン = {origins}")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 本番環境では適切に設定する
+    allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=86400  # 24時間キャッシュ
 )
 
 # データベース接続の初期化
@@ -49,15 +60,31 @@ app.include_router(api_router, prefix="/api/v1")
 async def log_requests(request: Request, call_next):
     logger.debug(f"リクエスト受信: {request.method} {request.url}")
     
+    # OPTIONSリクエストの場合は即座に応答
+    if request.method == "OPTIONS":
+        headers = {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Max-Age": "86400",  # 24時間キャッシュ
+        }
+        return Response(status_code=200, headers=headers)
+    
     try:
         response = await call_next(request)
+        
+        # レスポンスにCORSヘッダーを追加
+        if "Access-Control-Allow-Origin" not in response.headers:
+            response.headers["Access-Control-Allow-Origin"] = "*"
+        
         logger.debug(f"レスポンス送信: {response.status_code}")
         return response
     except Exception as e:
         logger.error(f"リクエスト処理エラー: {str(e)}", exc_info=True)
         return JSONResponse(
             status_code=500,
-            content={"detail": f"Internal server error: {str(e)}"}
+            content={"detail": f"Internal server error: {str(e)}"},
+            headers={"Access-Control-Allow-Origin": "*"}
         )
 
 # エラーハンドリング
@@ -804,6 +831,18 @@ async def proxy_mlflow(path: str, request: Request):
 @app.options("/proxy-mlflow", response_class=Response)
 async def proxy_mlflow_root(request: Request):
     logger.info(f"MLflowルートパスへのアクセス: {request.method}")
+    # OPTIONSリクエストの場合は明示的に処理
+    if request.method == "OPTIONS":
+        headers = {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        }
+        return Response(
+            content=b"",
+            status_code=200,
+            headers=headers
+        )
     return await proxy_mlflow("", request)
 
 # 静的ファイル用のプロキシエンドポイント（CSSやJSなど）
