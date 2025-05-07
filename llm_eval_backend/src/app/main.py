@@ -255,16 +255,41 @@ async def debug_mlflow():
 async def mlflow_redirect(path: str):
     return RedirectResponse(url=f"/proxy-mlflow/{path}")
 
-# MLflowのGraphQLエンドポイントへのプロキシ
-# API/Admin UIとの衝突を避けるためにパスをMLflow専用に変更
-@app.get("/proxy-mlflow/graphql")
-@app.post("/proxy-mlflow/graphql") 
-@app.options("/proxy-mlflow/graphql")
+# 404エラーを返すグラフQLエンドポイント（クライアントが何度もリトライしないように）
+@app.get("/graphql")
+@app.post("/graphql")
+@app.options("/graphql")
+async def graphql_404(request: Request):
+    """
+    GraphQLエンドポイント - 404エラーを返します。
+    フロントエンドからのリクエストが存在しないエンドポイントにループしないようにするため。
+    """
+    headers = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    }
+    
+    # OPTIONSリクエストの場合は200を返す（CORS対応）
+    if request.method == "OPTIONS":
+        return Response(content=b"", status_code=200, headers=headers)
+    
+    # それ以外は404エラーを返す
+    return JSONResponse(
+        content={"detail": "GraphQL endpoint not supported"},
+        status_code=404,
+        headers=headers
+    )
+
+# MLflowのGraphQLエンドポイントは不要なため一時的に無効化
+# GraphQLエンドポイントの問題が解決されるまでコメントアウト
+"""
+# 現在は使用していないMLflow GraphQLエンドポイント
+# 必要になった場合は再度有効化する
+# @app.get("/proxy-mlflow/graphql")
+# @app.post("/proxy-mlflow/graphql") 
+# @app.options("/proxy-mlflow/graphql")
 async def graphql_proxy(request: Request):
-    """
-    MLflowのGraphQLエンドポイントへのプロキシ
-    新しいバージョンのMLflowはGraphQLを使用することがある
-    """
     # MLflowサービスへの内部URL（Docker Composeネットワーク内）
     mlflow_host = os.environ.get("MLFLOW_HOST", "mlflow")
     mlflow_port = os.environ.get("MLFLOW_PORT", "5000")
@@ -284,82 +309,8 @@ async def graphql_proxy(request: Request):
             headers=headers
         )
     
-    try:
-        # リクエストヘッダーをコピー
-        headers = {}
-        for name, value in request.headers.items():
-            if name.lower() not in ("host", "content-length"):
-                headers[name] = value
-        
-        # リクエストボディを取得
-        body = await request.body() if request.method == "POST" else None
-        
-        # リクエストメソッドに応じたHTTPリクエストを送信
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            if request.method == "GET":
-                response = await client.get(
-                    target_url, 
-                    headers=headers,
-                    params=dict(request.query_params),
-                    follow_redirects=True
-                )
-            elif request.method == "POST":
-                response = await client.post(
-                    target_url, 
-                    headers=headers, 
-                    content=body,
-                    follow_redirects=True
-                )
-            
-            # レスポンスヘッダーを設定
-            headers_to_forward = dict(response.headers)
-            headers_to_remove = ["content-encoding", "content-length", "transfer-encoding", "connection"]
-            for header in headers_to_remove:
-                if header in headers_to_forward:
-                    del headers_to_forward[header]
-            
-            # CORSヘッダーを追加
-            headers_to_forward["Access-Control-Allow-Origin"] = "*"
-            headers_to_forward["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-            headers_to_forward["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
-            
-            # レスポンスコンテンツを取得
-            content = response.content
-            content_type = response.headers.get("content-type", "application/json")
-            
-            # JSONの場合、URLを書き換え
-            if content_type.startswith("application/json"):
-                try:
-                    content_text = content.decode("utf-8")
-                    
-                    # すべてのMLflow URLをプロキシURLに変換
-                    content_text = content_text.replace('http://localhost:5000', '/proxy-mlflow')
-                    content_text = content_text.replace('http://mlflow:5000', '/proxy-mlflow')
-                    content_text = content_text.replace(f'http://{mlflow_host}:{mlflow_port}', '/proxy-mlflow')
-                    content_text = content_text.replace('http://0.0.0.0:5000', '/proxy-mlflow')
-                    
-                    # 一般的なIPアドレスパターンの置換
-                    import re
-                    ip_pattern = r'http://\d+\.\d+\.\d+\.\d+:5000'
-                    content_text = re.sub(ip_pattern, '/proxy-mlflow', content_text)
-                    
-                    content = content_text.encode("utf-8")
-                except Exception as e:
-                    logger.warning(f"GraphQL JSONコンテンツの書き換えに失敗しました: {e}")
-            
-            # レスポンスを返す
-            return Response(
-                content=content,
-                status_code=response.status_code,
-                headers=headers_to_forward,
-                media_type=content_type
-            )
-    except Exception as e:
-        logger.error(f"GraphQLプロキシエラー: {str(e)}", exc_info=True)
-        return JSONResponse(
-            status_code=500,
-            content={"detail": f"GraphQLリクエスト処理エラー: {str(e)}"}
-        )
+    # 省略
+"""
 
 @app.get("/mlflow-ui", response_class=HTMLResponse)
 async def mlflow_ui():
