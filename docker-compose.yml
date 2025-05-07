@@ -8,20 +8,27 @@ services:
     env_file:
       - ./llm_eval_backend/.env
     ports:
-      - "8001:8000"
+      - "${API_PORT:-8001}:8000"
     volumes:
       - ./llm_eval_backend/src:/app/src
       - ./llm_eval_backend/results:/app/results
-      - ./datasets:/external_datasets # コンテナ外のデータセットディレクトリをマウント（カレントディレクトリ基準の相対パス）
-      - ./external_data:/external_data # コンテナ外のデータ保存用ディレクトリをマウント
+      - ./datasets:/external_datasets # 既存のデータセットディレクトリをマウント
+      - ./external_data:/external_data # 既存のデータ保存用ディレクトリをマウント
     environment:
-      - LLMEVAL_ENV=development
-      - LLMEVAL_LOG_LEVEL=INFO
-      - MLFLOW_TRACKING_URI=http://mlflow:5000
-      - MLFLOW_HOST=mlflow
-      - MLFLOW_PORT=5000
-      - LLMEVAL_DB_PATH=/external_data/llm_eval.db # データベースファイルのパス
+      - LLMEVAL_ENV=${LLMEVAL_ENV:-development}
+      - LLMEVAL_LOG_LEVEL=${LLMEVAL_LOG_LEVEL:-INFO}
+      - MLFLOW_TRACKING_URI=${MLFLOW_HOST_URI:-http://mlflow:5000}
+      - MLFLOW_HOST=${MLFLOW_HOST:-mlflow}
+      - MLFLOW_PORT=${MLFLOW_PORT:-5000}
+      - LLMEVAL_DB_PATH=/external_data/llm_eval.db # 既存のDBファイルパス
       - TZ=Asia/Tokyo # タイムゾーン設定
+    # APIサーバーはhealthエンドポイントを持っていない可能性があるため、ヘルスチェックを無効化
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "http://localhost:8000/health", "||", "exit", "1"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+    #   start_period: 10s
     depends_on:
       - mlflow
     restart: unless-stopped
@@ -31,9 +38,9 @@ services:
   mlflow:
     image: ghcr.io/mlflow/mlflow:latest
     ports:
-      - "5000:5000"
+      - "${MLFLOW_EXTERNAL_PORT:-5000}:5000"
     volumes:
-      - ./llm_eval_backend/mlflow:/mlflow
+      - ./llm_eval_backend/mlflow:/mlflow # 既存のMLflowディレクトリをマウント
     environment:
       - MLFLOW_TRACKING_URI=http://0.0.0.0:5000
       - MLFLOW_BACKEND_STORE_URI=sqlite:///mlflow/mlflow.db
@@ -45,36 +52,57 @@ services:
     # アーティファクト提供を有効化
     command: mlflow server --host 0.0.0.0 --backend-store-uri sqlite:///mlflow/mlflow.db --default-artifact-root file:///mlflow/artifacts --serve-artifacts
     user: root # アーティファクトディレクトリのパーミッション問題解決用
+    # MLflowサーバーのヘルスチェックを無効化
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "http://localhost:5000", "||", "exit", "1"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+    #   start_period: 10s
     networks:
       - llm-eval-network
 
-  # LLMサービス（Ollamaなど）と接続する場合のサンプル設定
-  # Ollamaサービス - ローカルLLMモデルを実行（GPU対応版 - 旧runtime指定形式）
+  # LLMサービス（Ollamaなど）と接続する場合の改善設定
+  # Ollamaサービス - ローカルLLMモデルを実行（GPU対応版）
   ollama:
+    profiles: ["${SKIP_OLLAMA:-default}"]  # SKIP_OLLAMA=true の場合は起動しない
     image: ollama/ollama:latest
     container_name: ollama
     ports:
-      - "11434:11434"
+      - "${OLLAMA_PORT:-11434}:11434"
     volumes:
       - ollama_data:/root/.ollama
     restart: unless-stopped
-    runtime: nvidia # GPUサポート（Compose 2.3形式）
+    # GPUサポート（古い形式を使用）
+    runtime: nvidia
     networks:
       - llm-eval-network
+    environment:
+      # 環境変数で設定可能なパラメータ
+      - OLLAMA_HOST=${OLLAMA_HOST:-0.0.0.0}
+      - OLLAMA_MODELS_PATH=${OLLAMA_MODELS_PATH:-/root/.ollama}
 
   llm-leaderboard-app:
     build:
       context: ./llm_eval_frontend
       dockerfile: Dockerfile
     ports:
-      - "4173:3000"
+      - "${FRONTEND_PORT:-4173}:3000"
     # 環境ごとの設定が不要になるよう相対パスを使用
     # Viteのプロキシ設定で '/api' パスから APIサーバーへアクセス
     environment:
+      # 環境変数で各サービスへの接続先を指定可能
       # 空の値を設定することで相対パスを使用するようになる
-      - VITE_API_BASE_URL=
-      # 本番環境でこの設定を上書きしたい場合は以下の形式で指定する
-      # - VITE_API_BASE_URL=${API_BASE_URL:-}
+      - VITE_API_BASE_URL=${API_BASE_URL:-}
+      # Ollamaサービスの接続先を環境変数で指定可能
+      - VITE_OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
+    # フロントエンドのヘルスチェックを無効化
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "http://localhost:3000", "||", "exit", "1"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+    #   start_period: 15s
     depends_on:
       - api
     networks:
@@ -85,6 +113,6 @@ networks:
   llm-eval-network:
     driver: bridge
 
+# データとモデルの永続化用ボリューム
 volumes:
-  mlflow:
   ollama_data:

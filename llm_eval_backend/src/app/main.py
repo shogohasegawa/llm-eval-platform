@@ -2,6 +2,7 @@ import os
 import logging
 import time
 import datetime
+import json
 from zoneinfo import ZoneInfo
 from fastapi import FastAPI, Request, Response
 import httpx
@@ -643,14 +644,37 @@ async def proxy_mlflow(path: str, request: Request):
     # ホスト名を環境変数から取得（デフォルトはmlflow）
     mlflow_host = os.environ.get("MLFLOW_HOST", "mlflow")
     mlflow_port = os.environ.get("MLFLOW_PORT", "5000")
-    target_url = f"http://{mlflow_host}:{mlflow_port}/{path}"
-    logger.debug(f"MLflow target URL: {target_url}")
     
-    # クエリパラメータを転送
+    # 接続試行対象URLリスト - 優先順位順
+    connection_attempts = [
+        # 1. 環境変数で指定されたホスト（デフォルト：mlflow:5000）
+        f"http://{mlflow_host}:{mlflow_port}/{path}",
+        # 2. ローカルホスト（同一コンテナ内からの接続用）
+        f"http://localhost:{mlflow_port}/{path}",
+        # 3. Docker内部ネットワークの一般的なアドレス
+        f"http://host.docker.internal:{mlflow_port}/{path}",
+        # 4. Docker Bridgeネットワークのデフォルトゲートウェイ
+        f"http://172.17.0.1:{mlflow_port}/{path}"
+    ]
+    
+    # 最初の接続試行先URLをログ
+    target_url = connection_attempts[0]
+    logger.debug(f"MLflow primary target URL: {target_url}")
+    
+    # フォールバック情報を記録
+    fallback_urls = connection_attempts[1:]
+    logger.debug(f"MLflow fallback URLs: {fallback_urls}")
+    
+    # クエリパラメータをURLリストに適用
+    query_string = ""
     if request.query_params:
-        target_url += "?" + str(request.query_params)
+        query_string = "?" + str(request.query_params)
     
-    logger.debug(f"MLflowへのプロキシリクエスト: {request.method} {target_url}")
+    # 正規化されたURLリストを作成（クエリパラメータを含む）
+    attempt_urls = [url + query_string for url in connection_attempts]
+    primary_url = attempt_urls[0]
+    
+    logger.debug(f"MLflowへのプロキシリクエスト: {request.method} {primary_url}")
     
     try:
         # リクエストヘッダーをコピー（一部のヘッダーは除外）
@@ -675,53 +699,132 @@ async def proxy_mlflow(path: str, request: Request):
         # リクエストボディを取得
         body = await request.body() if request.method != "GET" else None
         
-        # リクエストメソッドに応じたHTTPリクエストを送信
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            if request.method == "GET":
-                response = await client.get(target_url, headers=headers, follow_redirects=True)
-            elif request.method == "POST":
-                response = await client.post(target_url, headers=headers, content=body, follow_redirects=True)
-            elif request.method == "PUT":
-                response = await client.put(target_url, headers=headers, content=body, follow_redirects=True)
-            elif request.method == "DELETE":
-                response = await client.delete(target_url, headers=headers, follow_redirects=True)
-            elif request.method == "PATCH":
-                response = await client.patch(target_url, headers=headers, content=body, follow_redirects=True)
-            else:
-                return JSONResponse(
-                    status_code=405,
-                    content={"detail": f"Method {request.method} not allowed"}
-                )
+        # 接続エラーを蓄積
+        errors = []
+        response = None
+        
+        # 複数URLを試行するフォールバックメカニズム
+        for url_index, current_url in enumerate(attempt_urls):
+            try:
+                # リクエストメソッドに応じたHTTPリクエストを送信
+                async with httpx.AsyncClient(timeout=15.0) as client:  # タイムアウトを適切に設定
+                    if request.method == "GET":
+                        response = await client.get(current_url, headers=headers, follow_redirects=True)
+                    elif request.method == "POST":
+                        response = await client.post(current_url, headers=headers, content=body, follow_redirects=True)
+                    elif request.method == "PUT":
+                        response = await client.put(current_url, headers=headers, content=body, follow_redirects=True)
+                    elif request.method == "DELETE":
+                        response = await client.delete(current_url, headers=headers, follow_redirects=True)
+                    elif request.method == "PATCH":
+                        response = await client.patch(current_url, headers=headers, content=body, follow_redirects=True)
+                    else:
+                        return JSONResponse(
+                            status_code=405,
+                            content={"detail": f"Method {request.method} not allowed"}
+                        )
+                
+                # 成功した場合、使用したURLをログに記録して処理を続行
+                if url_index > 0:
+                    logger.info(f"MLflow接続: フォールバックURL({url_index})を使用しました: {current_url}")
+                
+                # レスポンスヘッダーから不要なものを除外
+                headers_to_forward = dict(response.headers)
+                headers_to_remove = ["content-encoding", "content-length", "transfer-encoding", "connection"]
+                for header in headers_to_remove:
+                    if header in headers_to_forward:
+                        del headers_to_forward[header]
+                
+                # CORSヘッダーを追加
+                headers_to_forward["Access-Control-Allow-Origin"] = "*"
+                headers_to_forward["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+                headers_to_forward["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+                
+                # 接続が成功したので、レスポンス処理に進む
+                break
+                
+            except Exception as e:
+                # 失敗した場合はエラーを記録して次のURLを試す
+                error_msg = f"URL{url_index} '{current_url}': {str(e)}"
+                errors.append(error_msg)
+                logger.warning(f"MLflow接続エラー: {error_msg}")
+                
+                # 最後のURLまで試したが全て失敗した場合
+                if url_index == len(attempt_urls) - 1:
+                    raise Exception(f"全ての接続先で接続失敗: {', '.join(errors)}")
+                
+                # 次のURLを試す
+                continue
+        
+        # 全ての接続試行が終了後、レスポンスがない場合はエラーを返す
+        if response is None:
+            return JSONResponse(
+                status_code=500,
+                content={"detail": "MLflowサーバーへの接続に失敗しました。レスポンスが取得できませんでした。"}
+            )
             
-            # レスポンスヘッダーから不要なものを除外
-            headers_to_forward = dict(response.headers)
-            headers_to_remove = ["content-encoding", "content-length", "transfer-encoding", "connection"]
-            for header in headers_to_remove:
-                if header in headers_to_forward:
-                    del headers_to_forward[header]
+        # コンテンツタイプのチェック
+        content_type = response.headers.get("content-type", "")
+        content = response.content
+        
+        # HTMLの場合、相対パスを絶対パスに変換する
+        if content_type.startswith("text/html"):
+            content_text = content.decode("utf-8")
             
-            # CORSヘッダーを追加
-            headers_to_forward["Access-Control-Allow-Origin"] = "*"
-            headers_to_forward["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
-            headers_to_forward["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+            # 相対パスを '/proxy-mlflow/' で始まる絶対パスに変換
+            content_text = content_text.replace('href="./static-files/', 'href="/proxy-mlflow/static-files/')
+            content_text = content_text.replace('src="static-files/', 'src="/proxy-mlflow/static-files/')
+            content_text = content_text.replace('src="./static-files/', 'src="/proxy-mlflow/static-files/')
+            content_text = content_text.replace('href="static-files/', 'href="/proxy-mlflow/static-files/')
+            content_text = content_text.replace('href="api/', 'href="/proxy-mlflow/api/')
+            content_text = content_text.replace('href="#/', 'href="/proxy-mlflow#/')
             
-            # コンテンツタイプのチェック
-            content_type = response.headers.get("content-type", "")
-            content = response.content
+            # 絶対パスのMLflowへの参照をプロキシに変換
+            content_text = content_text.replace('http://localhost:5000', '/proxy-mlflow')
+            content_text = content_text.replace('"http://mlflow:5000', '"/proxy-mlflow')
+            content_text = content_text.replace("'http://mlflow:5000", "'/proxy-mlflow")
             
-            # HTMLの場合、相対パスを絶対パスに変換する
-            if content_type.startswith("text/html"):
+            # 環境変数で設定されたMLflowホスト名も置換
+            mlflow_host = os.environ.get("MLFLOW_HOST", "mlflow")
+            mlflow_port = os.environ.get("MLFLOW_PORT", "5000")
+            if mlflow_host != "mlflow" or mlflow_port != "5000":
+                content_text = content_text.replace(f'http://{mlflow_host}:{mlflow_port}', '/proxy-mlflow')
+                content_text = content_text.replace(f'"http://{mlflow_host}:{mlflow_port}', '"/proxy-mlflow')
+                content_text = content_text.replace(f"'http://{mlflow_host}:{mlflow_port}", "'/proxy-mlflow")
+            
+            # IPアドレスベースのURLも置換
+            content_text = content_text.replace('http://0.0.0.0:5000', '/proxy-mlflow')
+            
+            # 異なるネットワーク間でのアクセス用に、様々なIPアドレスパターンを書き換え
+            import re
+            # 任意のIPアドレスとポート5000のパターンを検出して置換
+            ip_pattern = r'(https?://)((?:\d{1,3}\.){3}\d{1,3}):5000'
+            content_text = re.sub(ip_pattern, r'\1\2:8001/proxy-mlflow', content_text)
+            
+            # artifact_uri内のファイルパス参照を修正（クロスネットワークアクセス時の問題修正）
+            if '"artifact_uri"' in content_text or "'artifact_uri'" in content_text:
+                # JSON内でartifact_uriフィールドのパスを検出して置換
+                artifact_pattern = r'(["\'])artifact_uri[\'"]\s*:\s*["\']file:///mlflow/artifacts/([^"\']*)[\'"]\s*([,}])'
+                content_text = re.sub(artifact_pattern, r'\1artifact_uri\1: \1/proxy-mlflow/get-artifact?path=\2\1\3', content_text)
+            
+            content = content_text.encode("utf-8")
+        
+        # CSSの場合も、相対パスを絶対パスに変換
+        elif content_type.startswith("text/css"):
+            try:
                 content_text = content.decode("utf-8")
-                
-                # 相対パスを '/proxy-mlflow/' で始まる絶対パスに変換
-                content_text = content_text.replace('href="./static-files/', 'href="/proxy-mlflow/static-files/')
-                content_text = content_text.replace('src="static-files/', 'src="/proxy-mlflow/static-files/')
-                content_text = content_text.replace('src="./static-files/', 'src="/proxy-mlflow/static-files/')
-                content_text = content_text.replace('href="static-files/', 'href="/proxy-mlflow/static-files/')
-                content_text = content_text.replace('href="api/', 'href="/proxy-mlflow/api/')
-                content_text = content_text.replace('href="#/', 'href="/proxy-mlflow#/')
-                
-                # 絶対パスのMLflowへの参照をプロキシに変換
+                content_text = content_text.replace('url(../', 'url(/proxy-mlflow/static-files/')
+                content_text = content_text.replace('url("../', 'url("/proxy-mlflow/static-files/')
+                content_text = content_text.replace("url('../", "url('/proxy-mlflow/static-files/")
+                content = content_text.encode("utf-8")
+            except:
+                # デコードに失敗した場合は元のコンテンツを使用
+                pass
+        
+        # JavaScriptの場合も、URLを書き換え
+        elif content_type.startswith("application/javascript") or content_type.startswith("text/javascript"):
+            try:
+                content_text = content.decode("utf-8")
                 content_text = content_text.replace('http://localhost:5000', '/proxy-mlflow')
                 content_text = content_text.replace('"http://mlflow:5000', '"/proxy-mlflow')
                 content_text = content_text.replace("'http://mlflow:5000", "'/proxy-mlflow")
@@ -743,103 +846,75 @@ async def proxy_mlflow(path: str, request: Request):
                 ip_pattern = r'(https?://)((?:\d{1,3}\.){3}\d{1,3}):5000'
                 content_text = re.sub(ip_pattern, r'\1\2:8001/proxy-mlflow', content_text)
                 
+                content = content_text.encode("utf-8")
+            except:
+                # デコードに失敗した場合は元のコンテンツを使用
+                pass
+        
+        # JSONの場合も、URLを書き換え
+        elif content_type.startswith("application/json"):
+            try:
+                content_text = content.decode("utf-8")
+                
+                # JSONとして解析して、空の場合やnullの場合は空のJSONオブジェクトを返す
+                if not content_text.strip() or content_text.strip() == "null":
+                    logger.warning("空のJSONレスポンスまたはnullが返されました。空のオブジェクトに置き換えます。")
+                    content_text = "{}"
+                
+                # すべてのMLflow絶対URLをプロキシURLに変換
+                content_text = content_text.replace('http://localhost:5000', '/proxy-mlflow')
+                content_text = content_text.replace('http://mlflow:5000', '/proxy-mlflow')
+                
+                # 環境変数で設定されたホスト名も置換
+                mlflow_host = os.environ.get("MLFLOW_HOST", "mlflow")
+                mlflow_port = os.environ.get("MLFLOW_PORT", "5000")
+                if mlflow_host != "mlflow" or mlflow_port != "5000":
+                    content_text = content_text.replace(f'http://{mlflow_host}:{mlflow_port}', '/proxy-mlflow')
+                
+                # IPアドレスベースのURLも置換
+                content_text = content_text.replace('http://0.0.0.0:5000', '/proxy-mlflow')
+                
+                # 一般的なIPアドレスパターンも置換（任意のIPアドレスを検出）
+                import re
+                # 単純なIP置換（http://IP:5000 → /proxy-mlflow）
+                ip_pattern = r'http://\d+\.\d+\.\d+\.\d+:5000'
+                content_text = re.sub(ip_pattern, '/proxy-mlflow', content_text)
+                
+                # 外部ネットワークから見える形式に書き換え（http://IP:5000 → http://IP:8001/proxy-mlflow）
+                ip_ext_pattern = r'(https?://)((?:\d{1,3}\.){3}\d{1,3}):5000'
+                content_text = re.sub(ip_ext_pattern, r'\1\2:8001/proxy-mlflow', content_text)
+                
                 # artifact_uri内のファイルパス参照を修正（クロスネットワークアクセス時の問題修正）
                 if '"artifact_uri"' in content_text or "'artifact_uri'" in content_text:
                     # JSON内でartifact_uriフィールドのパスを検出して置換
                     artifact_pattern = r'(["\'])artifact_uri[\'"]\s*:\s*["\']file:///mlflow/artifacts/([^"\']*)[\'"]\s*([,}])'
                     content_text = re.sub(artifact_pattern, r'\1artifact_uri\1: \1/proxy-mlflow/get-artifact?path=\2\1\3', content_text)
                 
+                # JSONとして解析可能か検証
+                try:
+                    json.loads(content_text)
+                except json.JSONDecodeError as e:
+                    logger.error(f"JSONとして解析できないコンテンツ: {e}")
+                    # 解析できない場合は空のJSONオブジェクトを返す
+                    content_text = "{}"
+                
                 content = content_text.encode("utf-8")
-            
-            # CSSの場合も、相対パスを絶対パスに変換
-            elif content_type.startswith("text/css"):
-                try:
-                    content_text = content.decode("utf-8")
-                    content_text = content_text.replace('url(../', 'url(/proxy-mlflow/static-files/')
-                    content_text = content_text.replace('url("../', 'url("/proxy-mlflow/static-files/')
-                    content_text = content_text.replace("url('../", "url('/proxy-mlflow/static-files/")
-                    content = content_text.encode("utf-8")
-                except:
-                    # デコードに失敗した場合は元のコンテンツを使用
-                    pass
-            
-            # JavaScriptの場合も、URLを書き換え
-            elif content_type.startswith("application/javascript") or content_type.startswith("text/javascript"):
-                try:
-                    content_text = content.decode("utf-8")
-                    content_text = content_text.replace('http://localhost:5000', '/proxy-mlflow')
-                    content_text = content_text.replace('"http://mlflow:5000', '"/proxy-mlflow')
-                    content_text = content_text.replace("'http://mlflow:5000", "'/proxy-mlflow")
-                    
-                    # 環境変数で設定されたMLflowホスト名も置換
-                    mlflow_host = os.environ.get("MLFLOW_HOST", "mlflow")
-                    mlflow_port = os.environ.get("MLFLOW_PORT", "5000")
-                    if mlflow_host != "mlflow" or mlflow_port != "5000":
-                        content_text = content_text.replace(f'http://{mlflow_host}:{mlflow_port}', '/proxy-mlflow')
-                        content_text = content_text.replace(f'"http://{mlflow_host}:{mlflow_port}', '"/proxy-mlflow')
-                        content_text = content_text.replace(f"'http://{mlflow_host}:{mlflow_port}", "'/proxy-mlflow")
-                    
-                    # IPアドレスベースのURLも置換
-                    content_text = content_text.replace('http://0.0.0.0:5000', '/proxy-mlflow')
-                    
-                    # 異なるネットワーク間でのアクセス用に、様々なIPアドレスパターンを書き換え
-                    import re
-                    # 任意のIPアドレスとポート5000のパターンを検出して置換
-                    ip_pattern = r'(https?://)((?:\d{1,3}\.){3}\d{1,3}):5000'
-                    content_text = re.sub(ip_pattern, r'\1\2:8001/proxy-mlflow', content_text)
-                    
-                    content = content_text.encode("utf-8")
-                except:
-                    # デコードに失敗した場合は元のコンテンツを使用
-                    pass
-            
-            # JSONの場合も、URLを書き換え
-            elif content_type.startswith("application/json"):
-                try:
-                    content_text = content.decode("utf-8")
-                    
-                    # すべてのMLflow絶対URLをプロキシURLに変換
-                    content_text = content_text.replace('http://localhost:5000', '/proxy-mlflow')
-                    content_text = content_text.replace('http://mlflow:5000', '/proxy-mlflow')
-                    
-                    # 環境変数で設定されたホスト名も置換
-                    mlflow_host = os.environ.get("MLFLOW_HOST", "mlflow")
-                    mlflow_port = os.environ.get("MLFLOW_PORT", "5000")
-                    if mlflow_host != "mlflow" or mlflow_port != "5000":
-                        content_text = content_text.replace(f'http://{mlflow_host}:{mlflow_port}', '/proxy-mlflow')
-                    
-                    # IPアドレスベースのURLも置換
-                    content_text = content_text.replace('http://0.0.0.0:5000', '/proxy-mlflow')
-                    
-                    # 一般的なIPアドレスパターンも置換（任意のIPアドレスを検出）
-                    import re
-                    # 単純なIP置換（http://IP:5000 → /proxy-mlflow）
-                    ip_pattern = r'http://\d+\.\d+\.\d+\.\d+:5000'
-                    content_text = re.sub(ip_pattern, '/proxy-mlflow', content_text)
-                    
-                    # 外部ネットワークから見える形式に書き換え（http://IP:5000 → http://IP:8001/proxy-mlflow）
-                    ip_ext_pattern = r'(https?://)((?:\d{1,3}\.){3}\d{1,3}):5000'
-                    content_text = re.sub(ip_ext_pattern, r'\1\2:8001/proxy-mlflow', content_text)
-                    
-                    # artifact_uri内のファイルパス参照を修正（クロスネットワークアクセス時の問題修正）
-                    if '"artifact_uri"' in content_text or "'artifact_uri'" in content_text:
-                        # JSON内でartifact_uriフィールドのパスを検出して置換
-                        artifact_pattern = r'(["\'])artifact_uri[\'"]\s*:\s*["\']file:///mlflow/artifacts/([^"\']*)[\'"]\s*([,}])'
-                        content_text = re.sub(artifact_pattern, r'\1artifact_uri\1: \1/proxy-mlflow/get-artifact?path=\2\1\3', content_text)
-                    
-                    content = content_text.encode("utf-8")
-                except Exception as e:
-                    logger.warning(f"JSONコンテンツの書き換えに失敗しました: {e}")
-                    # デコードに失敗した場合は元のコンテンツを使用
-                    pass
-            
-            # レスポンスの内容を返す
-            return Response(
-                content=content,
-                status_code=response.status_code,
-                headers=headers_to_forward,
-                media_type=content_type or "text/html"
-            )
+                
+                # ここで明示的にログ出力して確認
+                logger.info(f"処理後のJSONコンテンツ: {content_text[:100]}...")
+                
+            except Exception as e:
+                logger.warning(f"JSONコンテンツの書き換えに失敗しました: {e}")
+                # エラーが発生した場合は空のJSONオブジェクトを返す
+                content = b"{}"
+        
+        # レスポンスの内容を返す
+        return Response(
+            content=content,
+            status_code=response.status_code,
+            headers=headers_to_forward,
+            media_type=content_type or "text/html"
+        )
     except httpx.TimeoutException:
         logger.error(f"MLflowへのリクエストがタイムアウトしました: {target_url}")
         return JSONResponse(
@@ -847,10 +922,31 @@ async def proxy_mlflow(path: str, request: Request):
             content={"detail": "MLflowへのリクエストがタイムアウトしました"}
         )
     except Exception as e:
-        logger.error(f"MLflowへのプロキシ中にエラーが発生しました: {str(e)}", exc_info=True)
+        # 接続試行の詳細情報を含むエラーメッセージを作成
+        error_details = str(e)
+        if "全ての接続先で接続失敗" in error_details:
+            # 詳細なエラーメッセージはすでに含まれている
+            pass
+        else:
+            # 単一のエラーの場合はURLのリストを表示
+            attempted_urls = "\n".join([f"- URL{i}: {url}" for i, url in enumerate(attempt_urls)]) if 'attempt_urls' in locals() else f"- URL: {target_url}"
+            error_details = f"{error_details}\n試行したURL:\n{attempted_urls}"
+        
+        logger.error(f"MLflowへのプロキシ中にエラーが発生しました: {error_details}", exc_info=True)
+        
+        # ユーザーフレンドリーなエラーメッセージを返す
         return JSONResponse(
             status_code=500,
-            content={"detail": f"MLflowへのアクセスに失敗しました: {str(e)}"}
+            content={
+                "detail": "MLflowサーバーへの接続に失敗しました。",
+                "error": str(e),
+                "suggestions": [
+                    "MLflowコンテナが起動していることを確認してください。",
+                    "ネットワーク接続を確認してください。",
+                    "/debug-mlflow エンドポイントでMLflow接続状態を確認できます。"
+                ]
+            },
+            headers={"Access-Control-Allow-Origin": "*"}
         )
 
 # MLflowアーティファクトへのアクセスを提供するエンドポイント
@@ -936,7 +1032,18 @@ async def proxy_mlflow_root(request: Request):
             status_code=200,
             headers=headers
         )
-    return await proxy_mlflow("", request)
+    
+    try:
+        # プロキシ呼び出し
+        return await proxy_mlflow("", request)
+    except Exception as e:
+        logger.error(f"MLflowルートパスアクセスエラー: {str(e)}", exc_info=True)
+        # フロントエンド向けにわかりやすいエラーを返す
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "MLflowサーバーへの接続に失敗しました", "error": str(e)},
+            headers={"Access-Control-Allow-Origin": "*"}
+        )
 
 # 静的ファイル用のプロキシエンドポイント（CSSやJSなど）
 @app.get("/proxy-mlflow/static-files/{file_path:path}")
