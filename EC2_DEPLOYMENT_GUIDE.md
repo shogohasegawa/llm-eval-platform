@@ -303,6 +303,31 @@ docker-compose -f docker-compose.full.yml up -d
 - Ollamaが`0.0.0.0`（すべてのインターフェース）にバインドしていることを確認
 - VPC内でプライベートIPを使用している場合、正しいサブネット設定かを確認
 
+### クロスオリジンアクセスと外部アクセス設定
+
+1. **環境変数の正しい設定**:
+   - フロントエンドがバックエンドサービスにアクセスするには正しいURLが必要です
+   - 以下の変数を`.env`に設定してください：
+   ```bash
+   # APIへのアクセスURL（EC2の実際のIPアドレスまたはドメイン名に置き換え）
+   VITE_API_BASE_URL=http://10.0.1.159:8001
+   
+   # OllamaへのアクセスURL（EC2の実際のIPアドレスまたはドメイン名に置き換え）
+   VITE_OLLAMA_BASE_URL=http://10.0.1.159:11434
+   
+   # 外部アクセス用MLflow設定（APIがプロキシするため）
+   MLFLOW_EXTERNAL_URI=http://10.0.1.159:5000
+   ```
+
+2. **CORSの設定**:
+   - Ollamaでクロスオリジン要求を許可するには、以下の設定を追加:
+   ```yaml
+   # docker-compose.ymlのollama環境変数に追加
+   environment:
+     - OLLAMA_HOST=0.0.0.0
+     - OLLAMA_ORIGINS=*  # CORSを有効化
+   ```
+
 ### よくある問題
 
 1. **「Ollamaサービスに接続できない」**:

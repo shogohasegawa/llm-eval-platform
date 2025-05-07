@@ -62,6 +62,7 @@ services:
     restart: unless-stopped
     environment:
       - OLLAMA_HOST=${OLLAMA_HOST:-0.0.0.0}
+      - OLLAMA_ORIGINS=*
       - OLLAMA_MODELS_PATH=${OLLAMA_MODELS_PATH:-/root/.ollama}
       - NVIDIA_VISIBLE_DEVICES=all
     # Docker Composeバージョンに合わせたGPU設定
