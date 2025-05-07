@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -20,6 +20,7 @@ import {
   CircularProgress,
   Alert,
   Badge,
+  Pagination,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -38,6 +39,9 @@ const DatasetDetail: React.FC = () => {
 
   // 展開状態を管理
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
+  // ページネーション状態を管理
+  const [page, setPage] = useState(1);
+  const itemsPerPage = 50;
 
   // データセット詳細の取得
   const {
@@ -118,6 +122,20 @@ const DatasetDetail: React.FC = () => {
       [itemId]: !prev[itemId],
     }));
   };
+  
+  // ページ変更ハンドラ
+  const handlePageChange = (event: React.ChangeEvent<unknown>, value: number) => {
+    setPage(value);
+    // ページ変更時にスクロールを上部に戻す
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+  
+  // 現在のページに表示するアイテムを取得
+  const paginatedItems = useMemo(() => {
+    if (!enhancedDataset) return [];
+    const startIndex = (page - 1) * itemsPerPage;
+    return enhancedDataset.items.slice(startIndex, startIndex + itemsPerPage);
+  }, [enhancedDataset, page, itemsPerPage]);
 
   // データセットタイプに応じた色を設定
   const getDatasetTypeColor = (type: string) => {
@@ -424,12 +442,20 @@ const DatasetDetail: React.FC = () => {
         </Card>
       )}
 
-      <Typography variant="h5" component="h2" gutterBottom>
-        データセットアイテム
-      </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h5" component="h2">
+          データセットアイテム
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          {enhancedDataset.items.length > 0 
+            ? `${(page - 1) * itemsPerPage + 1}-${Math.min(page * itemsPerPage, enhancedDataset.items.length)}件 / 全${enhancedDataset.items.length}件`
+            : '0件'
+          }
+        </Typography>
+      </Box>
 
       <Grid container spacing={3}>
-        {enhancedDataset.items.map((item: DatasetItem) => (
+        {paginatedItems.map((item: DatasetItem) => (
           <Grid item xs={12} key={item.id}>
             <Paper 
               sx={{ 
@@ -569,6 +595,20 @@ const DatasetDetail: React.FC = () => {
           </Grid>
         ))}
       </Grid>
+      
+      {enhancedDataset.items.length > itemsPerPage && (
+        <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
+          <Pagination 
+            count={Math.ceil(enhancedDataset.items.length / itemsPerPage)} 
+            page={page} 
+            onChange={handlePageChange}
+            color="primary"
+            size="large"
+            showFirstButton
+            showLastButton
+          />
+        </Box>
+      )}
     </Box>
   );
 };
