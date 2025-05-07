@@ -134,7 +134,7 @@ async def evaluate(
             additional_params=additional_params
         )
 
-        # 2) フラットなメトリクス辞書を作成
+        # 2) フラットなメトリクス辞書を作成 - シンプルな解決策
         flat_metrics: Dict[str, float] = {}
         for ds, ds_res in results_full.get("results", {}).items():
             details = ds_res.get("details", {})
@@ -143,12 +143,12 @@ async def evaluate(
             logger.info(f"📊 フラットメトリクス作成: dataset={ds}, clean_name={clean_dataset_name}")
             
             for key, value in details.items():
-                if key.endswith("_details") or key.endswith("_error_rate"):
+                # 詳細結果と誤差率は除外
+                if key.endswith("_details") or key.endswith("_error_rate") or key.endswith("_parameters"):
                     continue
                 
-                # メトリクス名が重複しないように調整（冗長なデータセット名プレフィックスを避ける）
-                # ここで重複を防ぐ：key=aio_0shot_char_f1が別のレイヤーで再びプレフィックスされるのを防止
-                flat_metrics[key] = value  # 例: "aio_0shot_char_f1": 0.11
+                # メトリクスをそのまま使用（前段階で正規化済み）
+                flat_metrics[key] = value
 
         # 3) バックグラウンドでMLflowへログ（デバッグ有効化）
         try:

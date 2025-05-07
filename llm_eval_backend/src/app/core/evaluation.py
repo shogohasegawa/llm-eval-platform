@@ -704,24 +704,26 @@ async def run_evaluation(
     # 指標名で使用するデータセットの基本名を抽出（例：'aio_0shot' → 'aio'）
     logger.info(f"【デバッグ】処理前の base_name: '{base_name}'")
     
+    # シンプルな解決策: データセット名からshot情報を削除
     if '_' in base_name:
         parts = base_name.split('_')
-        logger.info(f"【デバッグ】分割されたパーツ: {parts}")
+        # shotを含む部分をすべて削除
+        clean_parts = [part for part in parts if 'shot' not in part]
         
-        # shotを含む部分があれば除去
-        shot_pattern = [p for p in parts if 'shot' in p]
-        logger.info(f"【デバッグ】検出されたshotパターン: {shot_pattern}")
-        
-        if any('shot' in part for part in parts):
-            filtered_parts = [p for p in parts if 'shot' not in p]
-            logger.info(f"【デバッグ】フィルタ後のパーツ: {filtered_parts}")
-            
-            if filtered_parts:  # 空でない場合のみ更新
-                base_name = '_'.join(filtered_parts)
+        if clean_parts:
+            # クリーンな部分からデータセット名を再構築
+            base_name = '_'.join(clean_parts)
+        else:
+            # すべての部分にshotが含まれている場合
+            first_part = parts[0]
+            if 'shot' in first_part:
+                base_name = first_part.split('shot')[0]
             else:
-                # 全てのパーツがshotを含む場合は最初のパーツを使用
-                base_name = parts[0].split('shot')[0]
-                logger.info(f"【デバッグ】shotだけだったので分割: {base_name}")
+                base_name = first_part
+    
+    # データセット名が空になった場合のフォールバック
+    if not base_name:
+        base_name = "dataset"
     
     # 最終的な基本名を記録
     logger.info(f"【デバッグ】最終的な base_name: '{base_name}'")
@@ -801,38 +803,49 @@ async def run_evaluation(
                 ]
                 if scores:  # エラーを除いたスコアがある場合のみ平均を計算
                     avg_score = sum(scores) / len(scores)
+                    # シンプルな解決: メトリクス名を直接構築
+                    # base_name はshotパターンが削除された状態
                     result_key = f"{base_name}_{shot}shot_{metric_name}"
-                    logger.info(f"【デバッグ】メトリクス保存キー: '{result_key}'")
+                    logger.info(f"【デバッグ】メトリクス保存キー: '{result_key}' → {avg_score}")
                     all_results[result_key] = avg_score
                     
                     # パラメータ情報も記録（あれば）
                     if metric_name in metrics_parameters:
+                        # シンプルな解決: パラメータキーを直接構築
                         param_key = f"{base_name}_{shot}shot_{metric_name}_parameters"
                         logger.info(f"【デバッグ】パラメータ保存キー: '{param_key}'")
                         all_results[param_key] = metrics_parameters[metric_name]
                 else:
+                    # シンプルな解決: スコアなしメトリクス名を直接構築
                     result_key = f"{base_name}_{shot}shot_{metric_name}"
                     logger.info(f"【デバッグ】スコアなしメトリクス保存キー: '{result_key}'")
                     all_results[result_key] = 0
             else:
                 logger.warning(f"Metric '{metric_name}' specified in dataset but not found in registry")
 
-        all_results[f"{base_name}_{shot}shot_details"] = shot_results
+        # シンプルな解決: 詳細キーを直接構築
+        details_key = f"{base_name}_{shot}shot_details"
+        logger.info(f"【デバッグ】詳細キー: '{details_key}'")
+        all_results[details_key] = shot_results
 
+    # サマリー生成 - シンプルな解決
     summary = []
     for shot in n_shots:
+        # 基本情報
         row = {
-            "dataset": base_name,  # サマリーでもbase_nameを使用
+            "dataset": base_name,
             "model": f"{provider_name}/{model_name}",
             "n_shots": shot,
             "num_samples": len(samples)
         }
-        # all_results のキーから実際に測定された指標だけ追加
+        
+        # メトリクス抽出
         prefix = f"{base_name}_{shot}shot_"
         for key, value in all_results.items():
-            if key.startswith(prefix) and not key.endswith("_details"):
+            if key.startswith(prefix) and not key.endswith("_details") and not key.endswith("_parameters"):
                 metric_name = key[len(prefix):]
                 row[metric_name] = value
+        
         summary.append(row)
 
     return {

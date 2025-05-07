@@ -383,11 +383,15 @@ async def execute_inference_evaluation(
                         ds_name = ds_name.replace(shot_suffix, "")
                         break
                 
-                # メトリクス名は「データセット名_nshot_指標名」の形式
-                metric_name = f"{ds_name}_{n_shots_value}shot_{key}"
-                
-                # シンプルに1つのメトリクス名を使用
-                flat_metrics[metric_name] = value
+                # シンプルな解決 - 既に正規化されているメトリクスを使用
+                # キーにショット情報が含まれているかチェック
+                if any('shot' in part for part in key.split('_')):
+                    # 既にショット情報が含まれている場合はそのまま使用
+                    flat_metrics[key] = value
+                else:
+                    # ショット情報がない場合は追加
+                    normalized_key = f"{ds_name}_{n_shots_value}shot_{key}"
+                    flat_metrics[normalized_key] = value
                 
                 # n_shots_value をメトリクス辞書に保存（MLflowログ用）
                 flat_metrics["n_shots_value"] = n_shots_value

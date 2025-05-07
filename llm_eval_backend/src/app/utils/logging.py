@@ -178,49 +178,41 @@ async def log_evaluation_results(model_name: str, metrics: Dict[str, float]) -> 
                             if "n_shots_value" in formatted_metrics:
                                 formatted_metrics.pop("n_shots_value")
                             
-                            # メトリクス名を完全に正規化する新しいアプローチ
+                            # MLflowメトリクスのシンプル処理 - 名前変更・重複処理は前段階で完了しているはず
                             cleaned_metrics = {}
                             for key, value in formatted_metrics.items():
-                                logger.info(f"📊 メトリクス名正規化処理: '{key}'")
-                                
-                                # いったん "_" で分割
+                                # n_shots_valueは特別処理
+                                if key == "n_shots_value":
+                                    cleaned_metrics[key] = value
+                                    continue
+                                    
+                                # ショット情報を含むメトリクスを処理
                                 parts = key.split("_")
-                                # 最初からやり直して正規化された形式に構築
+                                shot_index = -1
                                 
-                                # 1. n_shotパターンを特定
-                                shot_pattern = None
-                                for part in parts:
-                                    if part.endswith('shot'):
-                                        shot_pattern = part
+                                # ショット情報の位置を探す
+                                for i, part in enumerate(parts):
+                                    if 'shot' in part:
+                                        shot_index = i
                                         break
                                 
-                                if shot_pattern:
-                                    shot_num = shot_pattern.replace('shot', '')
+                                if shot_index >= 0:
+                                    # データセット名とメトリクス名を取得
+                                    dataset_parts = parts[:shot_index]
+                                    shot_part = parts[shot_index]
+                                    metric_part = parts[-1]
                                     
-                                    # 2. メトリクス名部分を特定（最後の部分）
-                                    metric_name = parts[-1]
-                                    
-                                    # 3. データセット名を特定（最初のshotパターン前までの部分）
-                                    dataset_parts = []
-                                    for part in parts:
-                                        if part.endswith('shot'):
-                                            break
-                                        dataset_parts.append(part)
-                                    
-                                    # データセット名がない場合はダミー名を使用
+                                    # データセット名
                                     dataset_name = "_".join(dataset_parts) if dataset_parts else "dataset"
                                     
-                                    # 4. 正規化された形式に再構築
-                                    normalized_key = f"{dataset_name}_{shot_num}shot_{metric_name}"
-                                    logger.info(f"📊 メトリクス名正規化: '{key}' → '{normalized_key}'")
-                                    
+                                    # 正規化メトリクス名を構築
+                                    normalized_key = f"{dataset_name}_{shot_part}_{metric_part}"
                                     cleaned_metrics[normalized_key] = value
                                 else:
-                                    # shot情報が含まれていない場合はそのまま
-                                    logger.info(f"📊 shot情報なし、そのまま使用: '{key}'")
+                                    # ショット情報がない場合はそのまま
                                     cleaned_metrics[key] = value
                             
-                            # 元のメトリクスを置き換え
+                            # 処理済みメトリクスに置き換え
                             formatted_metrics = cleaned_metrics
                             
                             # すべてのメトリクスを同じn_shots値をステップとして記録
