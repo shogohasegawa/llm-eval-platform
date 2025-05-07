@@ -625,6 +625,9 @@ async def process_batch(batch: List[Dict], model_name: str, provider_name: str,
     Returns:
         処理結果のリスト
     """
+    # デバッグログ追加
+    logger.info(f"【デバッグ】process_batch: dataset_name='{dataset_name}', n_shots={n_shots}")
+    
     few_shots = await get_few_shot_samples(dataset_name, n_shots)
     results = []
 
@@ -699,13 +702,29 @@ async def run_evaluation(
         dataset_path = settings.TEST_DATASETS_DIR / f"{file_name}.json"
         
     # 指標名で使用するデータセットの基本名を抽出（例：'aio_0shot' → 'aio'）
+    logger.info(f"【デバッグ】処理前の base_name: '{base_name}'")
+    
     if '_' in base_name:
         parts = base_name.split('_')
+        logger.info(f"【デバッグ】分割されたパーツ: {parts}")
+        
         # shotを含む部分があれば除去
-        if any(part.endswith('shot') for part in parts):
-            base_name = '_'.join([p for p in parts if not p.endswith('shot')])
+        shot_pattern = [p for p in parts if 'shot' in p]
+        logger.info(f"【デバッグ】検出されたshotパターン: {shot_pattern}")
+        
+        if any('shot' in part for part in parts):
+            filtered_parts = [p for p in parts if 'shot' not in p]
+            logger.info(f"【デバッグ】フィルタ後のパーツ: {filtered_parts}")
             
-    logger.info(f"Dataset base name for metrics: {base_name}")
+            if filtered_parts:  # 空でない場合のみ更新
+                base_name = '_'.join(filtered_parts)
+            else:
+                # 全てのパーツがshotを含む場合は最初のパーツを使用
+                base_name = parts[0].split('shot')[0]
+                logger.info(f"【デバッグ】shotだけだったので分割: {base_name}")
+    
+    # 最終的な基本名を記録
+    logger.info(f"【デバッグ】最終的な base_name: '{base_name}'")
     
     logger.info(f"Looking for dataset at: {dataset_path}")
     batch_size = settings.BATCH_SIZE
@@ -782,13 +801,19 @@ async def run_evaluation(
                 ]
                 if scores:  # エラーを除いたスコアがある場合のみ平均を計算
                     avg_score = sum(scores) / len(scores)
-                    all_results[f"{base_name}_{shot}shot_{metric_name}"] = avg_score
+                    result_key = f"{base_name}_{shot}shot_{metric_name}"
+                    logger.info(f"【デバッグ】メトリクス保存キー: '{result_key}'")
+                    all_results[result_key] = avg_score
                     
                     # パラメータ情報も記録（あれば）
                     if metric_name in metrics_parameters:
-                        all_results[f"{base_name}_{shot}shot_{metric_name}_parameters"] = metrics_parameters[metric_name]
+                        param_key = f"{base_name}_{shot}shot_{metric_name}_parameters"
+                        logger.info(f"【デバッグ】パラメータ保存キー: '{param_key}'")
+                        all_results[param_key] = metrics_parameters[metric_name]
                 else:
-                    all_results[f"{base_name}_{shot}shot_{metric_name}"] = 0
+                    result_key = f"{base_name}_{shot}shot_{metric_name}"
+                    logger.info(f"【デバッグ】スコアなしメトリクス保存キー: '{result_key}'")
+                    all_results[result_key] = 0
             else:
                 logger.warning(f"Metric '{metric_name}' specified in dataset but not found in registry")
 
@@ -856,12 +881,14 @@ async def run_multiple_evaluations(
         init_router_from_db()
 
     for dataset_name in datasets:
+        logger.info(f"【デバッグ】run_multiple_evaluations: 評価開始 - dataset_name='{dataset_name}'")
         dataset_results = await run_evaluation(
             dataset_name, provider_name, model_name, num_samples, n_shots, additional_params
         )
         results[dataset_name] = dataset_results
         # 辞書リストをそのままマージ
         all_summary.extend(dataset_results["summary"])
+        logger.info(f"【デバッグ】run_multiple_evaluations: 評価完了 - dataset_name='{dataset_name}', base_name={dataset_results['metadata']['dataset']}")
 
     return {
         "results": results,
