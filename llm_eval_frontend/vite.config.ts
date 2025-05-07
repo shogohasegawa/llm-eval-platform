@@ -29,6 +29,25 @@ export default defineConfig({
           });
         },
       },
+      // MLflowプロキシアクセス用の設定を追加
+      '/proxy-mlflow': {
+        target: process.env.VITE_API_BASE_URL || 'http://api:8000',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path,
+        configure: (proxy, _options) => {
+          proxy.on('error', (err, _req, _res) => {
+            console.log('MLflow proxy error', err);
+            console.log('Trying fallback connection to localhost...');
+          });
+          proxy.on('proxyReq', (proxyReq, req, _res) => {
+            console.log('MLflow Proxy Request:', req.method, req.url, '→', proxyReq.path);
+          });
+          proxy.on('proxyRes', (proxyRes, req, _res) => {
+            console.log('MLflow Proxy Response:', req.method, req.url, '←', proxyRes.statusCode);
+          });
+        },
+      },
     },
     watch: {
       ignored: ['**/node_modules/**', '**/dist/**', '**/.git/**'],
