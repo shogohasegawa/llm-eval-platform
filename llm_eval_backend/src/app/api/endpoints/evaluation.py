@@ -138,9 +138,16 @@ async def evaluate(
         flat_metrics: Dict[str, float] = {}
         for ds, ds_res in results_full.get("results", {}).items():
             details = ds_res.get("details", {})
+            # クリーン化されたデータセット名を取得
+            clean_dataset_name = ds_res.get("metadata", {}).get("dataset", ds)
+            logger.info(f"📊 フラットメトリクス作成: dataset={ds}, clean_name={clean_dataset_name}")
+            
             for key, value in details.items():
                 if key.endswith("_details") or key.endswith("_error_rate"):
                     continue
+                
+                # メトリクス名が重複しないように調整（冗長なデータセット名プレフィックスを避ける）
+                # ここで重複を防ぐ：key=aio_0shot_char_f1が別のレイヤーで再びプレフィックスされるのを防止
                 flat_metrics[key] = value  # 例: "aio_0shot_char_f1": 0.11
 
         # 3) バックグラウンドでMLflowへログ（デバッグ有効化）

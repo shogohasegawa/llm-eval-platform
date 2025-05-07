@@ -178,61 +178,47 @@ async def log_evaluation_results(model_name: str, metrics: Dict[str, float]) -> 
                             if "n_shots_value" in formatted_metrics:
                                 formatted_metrics.pop("n_shots_value")
                             
-                            # メトリクス名をチェックし、形式が重複している場合は修正
+                            # メトリクス名を完全に正規化する新しいアプローチ
                             cleaned_metrics = {}
                             for key, value in formatted_metrics.items():
-                                # 重複したn_shot情報をチェック（例: "aio_0shot_aio_0shot_char_f1"）
-                                shot_patterns = ["_0shot_", "_1shot_", "_2shot_", "_3shot_", "_4shot_", "_5shot_"]
+                                logger.info(f"📊 メトリクス名正規化処理: '{key}'")
                                 
-                                try:
-                                    # 重複を検出する
-                                    logger.info(f"📊 メトリクス名チェック: {key}")
-                                    
-                                    # 各ショットパターンの出現回数をカウント
-                                    pattern_counts = {}
-                                    for pattern in shot_patterns:
-                                        count = key.count(pattern)
-                                        if count > 0:
-                                            pattern_counts[pattern] = count
-                                    
-                                    # 重複があるか確認
-                                    duplicate_patterns = {p: c for p, c in pattern_counts.items() if c > 1}
-                                    if duplicate_patterns:
-                                        logger.info(f"📊 重複パターン検出: {duplicate_patterns} in '{key}'")
-                                        
-                                        # 例: "aio_0shot_aio_0shot_char_f1" → "aio_0shot_char_f1"
-                                        pattern = next(iter(duplicate_patterns.keys()))  # 最初の重複パターン
-                                        
-                                        # キーを分割してデータセット名とメトリクス名を抽出
-                                        parts = key.split(pattern)
-                                        if len(parts) >= 2:
-                                            # 最初のデータセット名と最後のメトリクス名を使用
-                                            dataset_name = parts[0]
-                                            metric_part = parts[-1]
-                                            
-                                            # 新しい正規化されたキー
-                                            normalized_key = f"{dataset_name}{pattern}{metric_part}"
-                                            logger.info(f"📊 正規化: '{key}' → '{normalized_key}'")
-                                            
-                                            cleaned_metrics[normalized_key] = value
-                                            continue
-                                    else:
-                                        # 重複はないが、shotパターンが含まれている場合
-                                        # パターンが1つだけ含まれている場合に正規化
-                                        if len(pattern_counts) == 1:
-                                            pattern = next(iter(pattern_counts.keys()))
-                                            
-                                            # すでに正規化された形式になっているか確認
-                                            parts = key.split(pattern)
-                                            if len(parts) == 2:
-                                                logger.info(f"📊 既に正規化済み: '{key}'")
-                                                cleaned_metrics[key] = value
-                                                continue
-                                except Exception as e:
-                                    logger.warning(f"📊 メトリクス名チェック中にエラー: {str(e)}")
+                                # いったん "_" で分割
+                                parts = key.split("_")
+                                # 最初からやり直して正規化された形式に構築
                                 
-                                # 問題がなければそのまま追加
-                                cleaned_metrics[key] = value
+                                # 1. n_shotパターンを特定
+                                shot_pattern = None
+                                for part in parts:
+                                    if part.endswith('shot'):
+                                        shot_pattern = part
+                                        break
+                                
+                                if shot_pattern:
+                                    shot_num = shot_pattern.replace('shot', '')
+                                    
+                                    # 2. メトリクス名部分を特定（最後の部分）
+                                    metric_name = parts[-1]
+                                    
+                                    # 3. データセット名を特定（最初のshotパターン前までの部分）
+                                    dataset_parts = []
+                                    for part in parts:
+                                        if part.endswith('shot'):
+                                            break
+                                        dataset_parts.append(part)
+                                    
+                                    # データセット名がない場合はダミー名を使用
+                                    dataset_name = "_".join(dataset_parts) if dataset_parts else "dataset"
+                                    
+                                    # 4. 正規化された形式に再構築
+                                    normalized_key = f"{dataset_name}_{shot_num}shot_{metric_name}"
+                                    logger.info(f"📊 メトリクス名正規化: '{key}' → '{normalized_key}'")
+                                    
+                                    cleaned_metrics[normalized_key] = value
+                                else:
+                                    # shot情報が含まれていない場合はそのまま
+                                    logger.info(f"📊 shot情報なし、そのまま使用: '{key}'")
+                                    cleaned_metrics[key] = value
                             
                             # 元のメトリクスを置き換え
                             formatted_metrics = cleaned_metrics
