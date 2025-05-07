@@ -142,28 +142,62 @@ async def list_datasets(type: Optional[str] = Query(None, description="データ
 
 @router.get("/{name}", response_model=DatasetDetailResponse)
 async def get_dataset_detail(
-    name: str = PathParam(..., description="データセット名")
+    name: str = PathParam(..., description="データセット名"),
+    limit: int = Query(200, description="アイテムの最大取得数（0は制限なし、デフォルトは200）")
 ):
     """
     データセットの詳細情報を取得
     
     Args:
         name: データセット名
+        limit: アイテムの最大取得数（パフォーマンス向上のため）
         
     Returns:
         DatasetDetailResponse: データセットの詳細情報
     """
     try:
-        dataset = get_dataset_by_name(name)
+        # データセットを取得（アイテム数制限付き）
+        datasets = get_datasets_list()
         
-        if not dataset:
+        # 名前が完全一致するデータセットを検索
+        dataset_meta = None
+        for ds in datasets:
+            if ds.name == name:
+                dataset_meta = ds
+                break
+                
+        if not dataset_meta:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"データセット '{name}' が見つかりません。"
             )
+            
+        # パフォーマンス考慮: アイテム数制限付きでデータセットを取得
+        dataset = get_dataset_by_path(dataset_meta.file_path, limit)
+        
+        if not dataset:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"データセット '{name}' の読み込みに失敗しました。"
+            )
+        
+        # レスポンスにアイテム制限情報を追加
+        total_items = dataset_meta.item_count
+        limited_items = len(dataset["items"])
+        
+        # メタデータを拡張
+        metadata = dataset["metadata"]
+        if hasattr(metadata, "dict"):
+            metadata_dict = metadata.dict()
+        else:
+            metadata_dict = dict(metadata)
+            
+        metadata_dict["total_item_count"] = total_items
+        metadata_dict["limited_item_count"] = limited_items
+        metadata_dict["is_limited"] = limited_items < total_items
         
         return DatasetDetailResponse(
-            metadata=dataset["metadata"],
+            metadata=metadata_dict,
             items=dataset["items"]
         )
     except HTTPException:

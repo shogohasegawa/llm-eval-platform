@@ -140,12 +140,13 @@ def _get_datasets_from_dir(directory: Path, dataset_type: str) -> List[DatasetMe
     return datasets
 
 
-def get_dataset_by_name(name: str) -> Optional[Dict[str, Any]]:
+def get_dataset_by_name(name: str, limit: int = 0) -> Optional[Dict[str, Any]]:
     """
     名前でデータセットを検索する
     
     Args:
         name: 検索するデータセット名
+        limit: アイテムの最大取得数（0は制限なし）
         
     Returns:
         Optional[Dict[str, Any]]: データセットが見つかった場合はデータセット情報、見つからない場合はNone
@@ -157,7 +158,8 @@ def get_dataset_by_name(name: str) -> Optional[Dict[str, Any]]:
         if dataset_meta.name == name:
             # ファイルからデータセットの内容を読み込む
             try:
-                dataset = get_dataset_by_path(dataset_meta.file_path)
+                # パフォーマンス考慮: アイテム数制限付きでデータセットを取得
+                dataset = get_dataset_by_path(dataset_meta.file_path, limit)
                 if dataset:
                     return dataset
             except Exception as e:
@@ -167,12 +169,13 @@ def get_dataset_by_name(name: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-def get_dataset_by_path(file_path: str) -> Optional[Dict[str, Any]]:
+def get_dataset_by_path(file_path: str, limit: int = 0) -> Optional[Dict[str, Any]]:
     """
     ファイルパスでデータセットを取得する
     
     Args:
         file_path: データセットファイルのパス
+        limit: アイテムの最大取得数（0は制限なし）
         
     Returns:
         Optional[Dict[str, Any]]: データセットが見つかった場合はデータセット情報、見つからない場合はNone
@@ -235,7 +238,14 @@ def get_dataset_by_path(file_path: str) -> Optional[Dict[str, Any]]:
         
         # アイテムリストがある場合は処理
         if source_items is not None:
-            for idx, item in enumerate(source_items):
+            # アイテム数の制限（パフォーマンス向上のため）
+            # limit が 0 の場合は全てのアイテムを処理
+            items_to_process = source_items
+            if limit > 0 and len(source_items) > limit:
+                logger.info(f"アイテム数を {limit} に制限します（全 {len(source_items)} アイテム中）")
+                items_to_process = source_items[:limit]
+            
+            for idx, item in enumerate(items_to_process):
                 if isinstance(item, dict):
                     item_id = item.get("id", f"item_{idx}")
                     instruction = item.get("instruction", "")
