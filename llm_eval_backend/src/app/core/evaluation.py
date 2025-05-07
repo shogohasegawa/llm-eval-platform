@@ -687,14 +687,25 @@ async def run_evaluation(
         else:
             # パスが含まれているが拡張子がない場合
             dataset_path = Path(f"{dataset_name}.json")
-        base_name = dataset_name.split('/')[-1]
-        if base_name.endswith('.json'):
-            base_name = base_name[:-5]  # .jsonを削除
+        file_name = dataset_name.split('/')[-1]
+        if file_name.endswith('.json'):
+            file_name = file_name[:-5]  # .jsonを削除
+        base_name = file_name
     else:
         # データセット名のみの場合
-        base_name = dataset_name
+        file_name = dataset_name
+        base_name = file_name
         # 絶対パスで生成
-        dataset_path = settings.TEST_DATASETS_DIR / f"{base_name}.json"
+        dataset_path = settings.TEST_DATASETS_DIR / f"{file_name}.json"
+        
+    # 指標名で使用するデータセットの基本名を抽出（例：'aio_0shot' → 'aio'）
+    if '_' in base_name:
+        parts = base_name.split('_')
+        # shotを含む部分があれば除去
+        if any(part.endswith('shot') for part in parts):
+            base_name = '_'.join([p for p in parts if not p.endswith('shot')])
+            
+    logger.info(f"Dataset base name for metrics: {base_name}")
     
     logger.info(f"Looking for dataset at: {dataset_path}")
     batch_size = settings.BATCH_SIZE
@@ -786,7 +797,7 @@ async def run_evaluation(
     summary = []
     for shot in n_shots:
         row = {
-            "dataset": dataset_name,
+            "dataset": base_name,  # サマリーでもbase_nameを使用
             "model": f"{provider_name}/{model_name}",
             "n_shots": shot,
             "num_samples": len(samples)
@@ -803,7 +814,8 @@ async def run_evaluation(
         "summary": summary,       # DataFrame ではなく List[Dict]
         "details": all_results,
         "metadata": {
-            "dataset": dataset_name,
+            "dataset": base_name,  # メタデータでもbase_nameを使用
+            "raw_dataset_name": dataset_name,  # 元のデータセット名も保持
             "model": f"{provider_name}/{model_name}",
             "num_samples": num_samples,
             "n_shots": n_shots,
@@ -857,7 +869,8 @@ async def run_multiple_evaluations(
         "metadata": {
             "provider_name": provider_name,
             "model_name": model_name,
-            "datasets": datasets,
+            "datasets": datasets,  # 元のデータセット名リストを保持
+            "cleaned_datasets": [r["metadata"]["dataset"] for r in results.values()],  # クリーンにしたデータセット名
             "num_samples": num_samples,
             "n_shots": n_shots,
             "timestamp": timestamp,
