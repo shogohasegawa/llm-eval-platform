@@ -1,0 +1,80 @@
+version: '3.8'
+
+# CPU EC2インスタンス用の設定ファイル - フロントエンド、API、MLflowを含む
+# 使用方法: docker-compose -f docker-compose.cpu.yml up -d
+
+services:
+  api:
+    build:
+      context: ./llm_eval_backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./llm_eval_backend/.env
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./llm_eval_backend/src:/app/src
+      - ./llm_eval_backend/results:/app/results
+      - ./datasets:/external_datasets # コンテナ外のデータセットディレクトリをマウント
+      - ./external_data:/external_data # コンテナ外のデータ保存用ディレクトリをマウント
+    environment:
+      - LLMEVAL_ENV=${LLMEVAL_ENV:-development}
+      - LLMEVAL_LOG_LEVEL=${LLMEVAL_LOG_LEVEL:-INFO}
+      # 環境変数でMLflowサーバーの接続先を指定可能
+      - MLFLOW_TRACKING_URI=${MLFLOW_HOST_URI:-http://mlflow:5000}
+      - MLFLOW_HOST=${MLFLOW_HOST:-mlflow}
+      - MLFLOW_PORT=${MLFLOW_PORT:-5000}
+      # Ollamaサービスの接続先
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
+      - LLMEVAL_DB_PATH=/external_data/llm_eval.db # データベースファイルのパス
+      - TZ=${TZ:-Asia/Tokyo} # タイムゾーン設定
+    depends_on:
+      - mlflow
+    restart: unless-stopped
+    networks:
+      - llm-eval-network
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:latest
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./llm_eval_backend/mlflow:/mlflow
+    environment:
+      - MLFLOW_TRACKING_URI=http://0.0.0.0:5000
+      - MLFLOW_BACKEND_STORE_URI=sqlite:///mlflow/mlflow.db
+      - MLFLOW_DEFAULT_ARTIFACT_ROOT=file:///mlflow/artifacts
+      # クロスネットワークアクセス対応
+      - MLFLOW_SERVE_ARTIFACTS=true
+      - GUNICORN_CMD_ARGS="--access-logfile - --workers 1 --threads 2 --timeout 180 --forwarded-allow-ips='*' --log-level=debug"
+      - ENABLE_CORS=true
+    # アーティファクト提供を有効化
+    command: mlflow server --host 0.0.0.0 --backend-store-uri sqlite:///mlflow/mlflow.db --default-artifact-root file:///mlflow/artifacts --serve-artifacts
+    user: root # アーティファクトディレクトリのパーミッション問題解決用
+    networks:
+      - llm-eval-network
+    restart: unless-stopped
+
+  llm-leaderboard-app:
+    build:
+      context: ./llm_eval_frontend
+      dockerfile: Dockerfile
+    ports:
+      - "4173:3000"
+    # 環境ごとの設定が不要になるよう相対パスを使用
+    # Viteのプロキシ設定で '/api' パスから APIサーバーへアクセス
+    environment:
+      # 環境変数で各サービスへの接続先を指定可能
+      # 空の値を設定することで相対パスを使用するようになる
+      - VITE_API_BASE_URL=${API_BASE_URL:-}
+      # Ollamaサービスの接続先を環境変数で指定可能
+      - VITE_OLLAMA_BASE_URL=${VITE_OLLAMA_BASE_URL:-}
+    depends_on:
+      - api
+    networks:
+      - llm-eval-network
+    restart: always
+
+networks:
+  llm-eval-network:
+    driver: bridge

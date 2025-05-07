@@ -9,6 +9,7 @@ import aiohttp
 import json
 import logging
 import time
+import os
 from typing import Dict, Any, Optional, List
 import uuid
 from datetime import datetime
@@ -17,6 +18,10 @@ from app.utils.db.database import get_db
 
 # ロガーの設定
 logger = logging.getLogger(__name__)
+
+# Ollamaサービスの接続先をカスタマイズするための環境変数を追加
+# 環境変数OLLAMA_BASE_URLがあればそれを使用、なければDockerネットワーク内のollamaサービスを使用
+OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://ollama:11434")
 
 
 class DownloadStatus(str, Enum):
