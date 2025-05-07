@@ -126,21 +126,20 @@ nano .env
 - `GPU_INSTANCE_IP`：GPUインスタンスの公開IPアドレスまたはプライベートIPを設定
 - `API_BASE_URL`：自身のIPアドレスを指定（例: `http://your-cpu-instance-ip:8001`）
 
-2. バックエンド用の環境設定ファイルを作成：
+2. バックエンド用の環境設定が既に存在しており、必要に応じて調整します：
 
 ```bash
-# バックエンド用の環境設定ファイルを作成
-cp .env.backend.example llm_eval_backend/.env
+# 既存のサンプル設定をチェック
+cat llm_eval_backend/.env.sample
 
 # 必要に応じて編集
 nano llm_eval_backend/.env
 ```
 
 **主な設定項目：**
-- `EXTERNAL_DATASETS_DIR`：外部データセットのディレクトリパス
-- `TEST_DATASETS_DIR`：テストデータセットのディレクトリパス
-- `NSHOT_DATASETS_DIR`：N-shotデータセットのディレクトリパス
-- `LLMEVAL_DB_PATH`：データベースファイルのパス
+- `LLMEVAL_DATASET_DIR`：データセットディレクトリパス（通常は`/external_datasets/test/`）
+- `LLMEVAL_TRAIN_DIR`：訓練データセットディレクトリパス（通常は`/external_datasets/n_shot/`）
+- `LLMEVAL_MLFLOW_TRACKING_URI`：MLflowサーバーのURI（通常は`http://mlflow:5000`）
 
 3. CPUインスタンスのコンポーネントを実行：
 
@@ -207,8 +206,12 @@ http://<cpu-instance-ip>:4173
 1. 環境設定ファイルを作成：
 
 ```bash
+# メイン環境設定ファイルをコピー
 cp .env.full.example .env
-cp .env.backend.example llm_eval_backend/.env
+
+# バックエンド設定を必要に応じて調整
+cat llm_eval_backend/.env.sample
+nano llm_eval_backend/.env
 
 # 必要に応じて.envファイルを編集
 nano .env
@@ -269,7 +272,7 @@ docker-compose -f docker-compose.full.yml up -d
    ```
 
 5. **「データセットが見つからない」**:
-   - バックエンド用の環境設定ファイル内のパス設定を確認
+   - バックエンド環境設定ファイル内の`LLMEVAL_DATASET_DIR`や`LLMEVAL_TRAIN_DIR`が正しく設定されているか確認
    - ボリュームマウントが正しく行われていることを確認
    ```bash
    # コンテナ内のマウント状況確認
