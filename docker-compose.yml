@@ -38,9 +38,12 @@ services:
       - MLFLOW_TRACKING_URI=http://0.0.0.0:5000
       - MLFLOW_BACKEND_STORE_URI=sqlite:///mlflow/mlflow.db
       - MLFLOW_DEFAULT_ARTIFACT_ROOT=file:///mlflow/artifacts
+      # クロスネットワークアクセス対応
+      - MLFLOW_SERVE_ARTIFACTS=true
       - GUNICORN_CMD_ARGS="--access-logfile - --workers 1 --threads 2 --timeout 180 --forwarded-allow-ips='*' --log-level=debug"
       - ENABLE_CORS=true
-    command: mlflow server --host 0.0.0.0 --backend-store-uri sqlite:///mlflow/mlflow.db --default-artifact-root file:///mlflow/artifacts
+    # アーティファクト提供を有効化
+    command: mlflow server --host 0.0.0.0 --backend-store-uri sqlite:///mlflow/mlflow.db --default-artifact-root file:///mlflow/artifacts --serve-artifacts
     user: root # アーティファクトディレクトリのパーミッション問題解決用
     networks:
       - llm-eval-network

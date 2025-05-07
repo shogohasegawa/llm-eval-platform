@@ -725,6 +725,7 @@ async def proxy_mlflow(path: str, request: Request):
                 content_text = content_text.replace('http://localhost:5000', '/proxy-mlflow')
                 content_text = content_text.replace('"http://mlflow:5000', '"/proxy-mlflow')
                 content_text = content_text.replace("'http://mlflow:5000", "'/proxy-mlflow")
+                
                 # 環境変数で設定されたMLflowホスト名も置換
                 mlflow_host = os.environ.get("MLFLOW_HOST", "mlflow")
                 mlflow_port = os.environ.get("MLFLOW_PORT", "5000")
@@ -732,8 +733,21 @@ async def proxy_mlflow(path: str, request: Request):
                     content_text = content_text.replace(f'http://{mlflow_host}:{mlflow_port}', '/proxy-mlflow')
                     content_text = content_text.replace(f'"http://{mlflow_host}:{mlflow_port}', '"/proxy-mlflow')
                     content_text = content_text.replace(f"'http://{mlflow_host}:{mlflow_port}", "'/proxy-mlflow")
+                
                 # IPアドレスベースのURLも置換
                 content_text = content_text.replace('http://0.0.0.0:5000', '/proxy-mlflow')
+                
+                # 異なるネットワーク間でのアクセス用に、様々なIPアドレスパターンを書き換え
+                import re
+                # 任意のIPアドレスとポート5000のパターンを検出して置換
+                ip_pattern = r'(https?://)((?:\d{1,3}\.){3}\d{1,3}):5000'
+                content_text = re.sub(ip_pattern, r'\1\2:8001/proxy-mlflow', content_text)
+                
+                # artifact_uri内のファイルパス参照を修正（クロスネットワークアクセス時の問題修正）
+                if '"artifact_uri"' in content_text or "'artifact_uri'" in content_text:
+                    # JSON内でartifact_uriフィールドのパスを検出して置換
+                    artifact_pattern = r'(["\'])artifact_uri[\'"]\s*:\s*["\']file:///mlflow/artifacts/([^"\']*)[\'"]\s*([,}])'
+                    content_text = re.sub(artifact_pattern, r'\1artifact_uri\1: \1/proxy-mlflow/get-artifact?path=\2\1\3', content_text)
                 
                 content = content_text.encode("utf-8")
             
@@ -768,6 +782,12 @@ async def proxy_mlflow(path: str, request: Request):
                     # IPアドレスベースのURLも置換
                     content_text = content_text.replace('http://0.0.0.0:5000', '/proxy-mlflow')
                     
+                    # 異なるネットワーク間でのアクセス用に、様々なIPアドレスパターンを書き換え
+                    import re
+                    # 任意のIPアドレスとポート5000のパターンを検出して置換
+                    ip_pattern = r'(https?://)((?:\d{1,3}\.){3}\d{1,3}):5000'
+                    content_text = re.sub(ip_pattern, r'\1\2:8001/proxy-mlflow', content_text)
+                    
                     content = content_text.encode("utf-8")
                 except:
                     # デコードに失敗した場合は元のコンテンツを使用
@@ -793,8 +813,19 @@ async def proxy_mlflow(path: str, request: Request):
                     
                     # 一般的なIPアドレスパターンも置換（任意のIPアドレスを検出）
                     import re
+                    # 単純なIP置換（http://IP:5000 → /proxy-mlflow）
                     ip_pattern = r'http://\d+\.\d+\.\d+\.\d+:5000'
                     content_text = re.sub(ip_pattern, '/proxy-mlflow', content_text)
+                    
+                    # 外部ネットワークから見える形式に書き換え（http://IP:5000 → http://IP:8001/proxy-mlflow）
+                    ip_ext_pattern = r'(https?://)((?:\d{1,3}\.){3}\d{1,3}):5000'
+                    content_text = re.sub(ip_ext_pattern, r'\1\2:8001/proxy-mlflow', content_text)
+                    
+                    # artifact_uri内のファイルパス参照を修正（クロスネットワークアクセス時の問題修正）
+                    if '"artifact_uri"' in content_text or "'artifact_uri'" in content_text:
+                        # JSON内でartifact_uriフィールドのパスを検出して置換
+                        artifact_pattern = r'(["\'])artifact_uri[\'"]\s*:\s*["\']file:///mlflow/artifacts/([^"\']*)[\'"]\s*([,}])'
+                        content_text = re.sub(artifact_pattern, r'\1artifact_uri\1: \1/proxy-mlflow/get-artifact?path=\2\1\3', content_text)
                     
                     content = content_text.encode("utf-8")
                 except Exception as e:
@@ -820,6 +851,68 @@ async def proxy_mlflow(path: str, request: Request):
         return JSONResponse(
             status_code=500,
             content={"detail": f"MLflowへのアクセスに失敗しました: {str(e)}"}
+        )
+
+# MLflowアーティファクトへのアクセスを提供するエンドポイント
+@app.get("/proxy-mlflow/get-artifact")
+async def get_mlflow_artifact(path: str):
+    """
+    MLflowアーティファクトへのアクセスを提供するエンドポイント。
+    異なるネットワーク間でのアーティファクトアクセスをサポート。
+    
+    Args:
+        path: アーティファクトパス
+    """
+    logger.info(f"アーティファクトへのアクセス: {path}")
+    
+    # アーティファクトのパスを構築
+    artifact_path = f"/mlflow/artifacts/{path}"
+    
+    # ファイルが存在するか確認
+    if not os.path.exists(artifact_path):
+        logger.error(f"アーティファクトが見つかりません: {artifact_path}")
+        return JSONResponse(
+            status_code=404,
+            content={"detail": f"Artifact not found: {path}"},
+            headers={"Access-Control-Allow-Origin": "*"}
+        )
+    
+    # ファイルタイプの判定
+    content_type = None
+    if artifact_path.endswith(".json"):
+        content_type = "application/json"
+    elif artifact_path.endswith(".csv"):
+        content_type = "text/csv"
+    elif artifact_path.endswith(".txt"):
+        content_type = "text/plain"
+    elif artifact_path.endswith(".png"):
+        content_type = "image/png"
+    elif artifact_path.endswith(".jpg") or artifact_path.endswith(".jpeg"):
+        content_type = "image/jpeg"
+    elif artifact_path.endswith(".html"):
+        content_type = "text/html"
+    else:
+        content_type = "application/octet-stream"
+    
+    # ファイルを読み込んでレスポンスとして返す
+    try:
+        with open(artifact_path, "rb") as f:
+            content = f.read()
+            
+        return Response(
+            content=content,
+            media_type=content_type,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Cache-Control": "public, max-age=86400"  # 24時間キャッシュ
+            }
+        )
+    except Exception as e:
+        logger.error(f"アーティファクト取得エラー: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"detail": f"Error accessing artifact: {str(e)}"},
+            headers={"Access-Control-Allow-Origin": "*"}
         )
 
 # ルートパスへのアクセスもプロキシ
