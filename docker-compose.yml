@@ -18,6 +18,8 @@ services:
       - LLMEVAL_ENV=development
       - LLMEVAL_LOG_LEVEL=INFO
       - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - MLFLOW_HOST=mlflow
+      - MLFLOW_PORT=5000
       - LLMEVAL_DB_PATH=/external_data/llm_eval.db # データベースファイルのパス
       - TZ=Asia/Tokyo # タイムゾーン設定
     depends_on:
@@ -33,12 +35,13 @@ services:
     volumes:
       - ./llm_eval_backend/mlflow:/mlflow
     environment:
-      - MLFLOW_TRACKING_URI=http://localhost:5000
+      - MLFLOW_TRACKING_URI=http://0.0.0.0:5000
       - MLFLOW_BACKEND_STORE_URI=sqlite:///mlflow/mlflow.db
       - MLFLOW_DEFAULT_ARTIFACT_ROOT=file:///mlflow/artifacts
-      - GUNICORN_CMD_ARGS="--access-logfile - --workers 1 --threads 2 --timeout 60 --forwarded-allow-ips='*' --log-level=debug"
+      - GUNICORN_CMD_ARGS="--access-logfile - --workers 1 --threads 2 --timeout 180 --forwarded-allow-ips='*' --log-level=debug"
       - ENABLE_CORS=true
     command: mlflow server --host 0.0.0.0 --backend-store-uri sqlite:///mlflow/mlflow.db --default-artifact-root file:///mlflow/artifacts
+    user: root # アーティファクトディレクトリのパーミッション問題解決用
     networks:
       - llm-eval-network
 

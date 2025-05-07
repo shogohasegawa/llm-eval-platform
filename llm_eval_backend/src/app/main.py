@@ -556,7 +556,11 @@ async def mlflow_ui():
 @app.options("/proxy-mlflow/{path:path}")
 async def proxy_mlflow(path: str, request: Request):
     # MLflowサービスへの内部URL（Docker Composeネットワーク内）
-    target_url = f"http://mlflow:5000/{path}"
+    # ホスト名を環境変数から取得（デフォルトはmlflow）
+    mlflow_host = os.environ.get("MLFLOW_HOST", "mlflow")
+    mlflow_port = os.environ.get("MLFLOW_PORT", "5000")
+    target_url = f"http://{mlflow_host}:{mlflow_port}/{path}"
+    logger.debug(f"MLflow target URL: {target_url}")
     
     # クエリパラメータを転送
     if request.query_params:
@@ -629,6 +633,7 @@ async def proxy_mlflow(path: str, request: Request):
                 content_text = content_text.replace('href="./static-files/', 'href="/proxy-mlflow/static-files/')
                 content_text = content_text.replace('src="static-files/', 'src="/proxy-mlflow/static-files/')
                 content_text = content_text.replace('src="./static-files/', 'src="/proxy-mlflow/static-files/')
+                content_text = content_text.replace('href="static-files/', 'href="/proxy-mlflow/static-files/')
                 content_text = content_text.replace('href="api/', 'href="/proxy-mlflow/api/')
                 content_text = content_text.replace('href="#/', 'href="/proxy-mlflow#/')
                 
@@ -636,6 +641,15 @@ async def proxy_mlflow(path: str, request: Request):
                 content_text = content_text.replace('http://localhost:5000', '/proxy-mlflow')
                 content_text = content_text.replace('"http://mlflow:5000', '"/proxy-mlflow')
                 content_text = content_text.replace("'http://mlflow:5000", "'/proxy-mlflow")
+                # 環境変数で設定されたMLflowホスト名も置換
+                mlflow_host = os.environ.get("MLFLOW_HOST", "mlflow")
+                mlflow_port = os.environ.get("MLFLOW_PORT", "5000")
+                if mlflow_host != "mlflow" or mlflow_port != "5000":
+                    content_text = content_text.replace(f'http://{mlflow_host}:{mlflow_port}', '/proxy-mlflow')
+                    content_text = content_text.replace(f'"http://{mlflow_host}:{mlflow_port}', '"/proxy-mlflow')
+                    content_text = content_text.replace(f"'http://{mlflow_host}:{mlflow_port}", "'/proxy-mlflow")
+                # IPアドレスベースのURLも置換
+                content_text = content_text.replace('http://0.0.0.0:5000', '/proxy-mlflow')
                 
                 content = content_text.encode("utf-8")
             
@@ -658,6 +672,18 @@ async def proxy_mlflow(path: str, request: Request):
                     content_text = content_text.replace('http://localhost:5000', '/proxy-mlflow')
                     content_text = content_text.replace('"http://mlflow:5000', '"/proxy-mlflow')
                     content_text = content_text.replace("'http://mlflow:5000", "'/proxy-mlflow")
+                    
+                    # 環境変数で設定されたMLflowホスト名も置換
+                    mlflow_host = os.environ.get("MLFLOW_HOST", "mlflow")
+                    mlflow_port = os.environ.get("MLFLOW_PORT", "5000")
+                    if mlflow_host != "mlflow" or mlflow_port != "5000":
+                        content_text = content_text.replace(f'http://{mlflow_host}:{mlflow_port}', '/proxy-mlflow')
+                        content_text = content_text.replace(f'"http://{mlflow_host}:{mlflow_port}', '"/proxy-mlflow')
+                        content_text = content_text.replace(f"'http://{mlflow_host}:{mlflow_port}", "'/proxy-mlflow")
+                    
+                    # IPアドレスベースのURLも置換
+                    content_text = content_text.replace('http://0.0.0.0:5000', '/proxy-mlflow')
+                    
                     content = content_text.encode("utf-8")
                 except:
                     # デコードに失敗した場合は元のコンテンツを使用
@@ -710,7 +736,9 @@ async def proxy_mlflow_root(request: Request):
 @app.options("/proxy-mlflow/static-files/{file_path:path}")
 async def proxy_mlflow_static(file_path: str, request: Request):
     # 静的ファイルへのパスを構築
-    target_url = f"http://mlflow:5000/static-files/{file_path}"
+    mlflow_host = os.environ.get("MLFLOW_HOST", "mlflow")
+    mlflow_port = os.environ.get("MLFLOW_PORT", "5000")
+    target_url = f"http://{mlflow_host}:{mlflow_port}/static-files/{file_path}"
     logger.debug(f"MLflow静的ファイルへのプロキシリクエスト: {request.method} {target_url}")
     
     # OPTIONSリクエストの場合は直接レスポンスを返す
@@ -780,7 +808,9 @@ async def proxy_mlflow_static(file_path: str, request: Request):
 @app.options("/proxy-mlflow/api/{path:path}")
 async def proxy_mlflow_api(path: str, request: Request):
     # MLflow APIへのパスを構築
-    target_url = f"http://mlflow:5000/api/{path}"
+    mlflow_host = os.environ.get("MLFLOW_HOST", "mlflow")
+    mlflow_port = os.environ.get("MLFLOW_PORT", "5000")
+    target_url = f"http://{mlflow_host}:{mlflow_port}/api/{path}"
     logger.debug(f"MLflow APIへのプロキシリクエスト: {request.method} {target_url}")
     
     try:
