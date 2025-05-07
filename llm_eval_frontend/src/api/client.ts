@@ -8,18 +8,22 @@ class ApiClient {
   private baseURL: string;
 
   constructor() {
-    // バックエンドAPIのURL
-    // ホスト名は実行環境に合わせて決める
-    // ブラウザからアクセスするため、外部からアクセス可能なホスト名/ポートが必要
+    // ベストプラクティス: 相対パスを使用して環境に依存しない設計
+    // Viteのプロキシ機能を活用してAPIリクエストを転送
+    // フロントエンドとバックエンドを同じオリジン下に配置
+
+    // 環境変数が設定されている場合はそれを使用し、設定されていない場合は相対パス
+    // 開発環境: 相対パス、本番環境: 環境変数または相対パス
+    const useRelativePath = !import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_BASE_URL === '';
+    this.baseURL = useRelativePath ? '' : import.meta.env.VITE_API_BASE_URL;
     
-    // コンテナ名でのアクセスは不可能（ブラウザからはコンテナネットワークにアクセスできない）
-    // docker-compose.yml の port マッピングを使ってアクセスする必要がある
-    this.baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001';
-    console.log(`API Base URL: ${this.baseURL}, Environment: ${import.meta.env.MODE}`);
-    console.log(`Environment variables:`, import.meta.env);
+    console.log(`API Base URL: ${this.baseURL || '相対パス'}, Environment: ${import.meta.env.MODE}`);
+    console.log(`Using relative path: ${useRelativePath}`);
     
-    // バックエンドが利用可能かどうかをチェック
-    fetch(`${this.baseURL}/api/v1/metrics/available`)
+    // バックエンドが利用可能かどうかをチェック（相対パスを使用）
+    const checkUrl = useRelativePath ? '/api/v1/metrics/available' : `${this.baseURL}/api/v1/metrics/available`;
+    
+    fetch(checkUrl)
       .then(response => {
         if (!response.ok) {
           console.error('APIサーバーの応答が正常でありません:', response.status);
@@ -29,6 +33,7 @@ class ApiClient {
       })
       .catch(error => {
         console.error('APIサーバーへの接続エラー:', error);
+        console.log('プロキシ設定や接続先を確認してください');
       });
     
     this.client = axios.create({

@@ -618,13 +618,42 @@ class RouterManager:
         if config.weight:
             model_entry["weight"] = config.weight
 
-        # モデルを追加（モデルごとのパラメータを使用）
-        self.router.add_model(
-            model_entry,
-            default_litellm_params={}  # デフォルトパラメータは空にして、各モデルのパラメータを優先
-        )
-        self.configs.append(config)
-        logger.info(f"Added model {config.model_name} to router")
+        # LiteLLM バージョン互換対応（1.68.0）
+        # add_model メソッドがない場合は新しいルーターを作成する
+        try:
+            # 新しいバージョンのLiteLLMの場合
+            if hasattr(self.router, 'add_model'):
+                # モデルを追加（モデルごとのパラメータを使用）
+                self.router.add_model(
+                    model_entry,
+                    default_litellm_params={}  # デフォルトパラメータは空にして、各モデルのパラメータを優先
+                )
+            else:
+                # 古いバージョンのLiteLLMの場合は、新しいルーターを作成
+                logger.info(f"Router does not have add_model method. Creating new router with updated model list.")
+                
+                # 既存のモデルリストに新しいモデルを追加
+                updated_model_list = self.router.model_list + [model_entry]
+                
+                # 新しいルーターを作成して置き換え
+                self.router = Router(
+                    model_list=updated_model_list,
+                    routing_strategy=self.router.routing_strategy,
+                    fallbacks=self.router.fallbacks if hasattr(self.router, 'fallbacks') else [],
+                    context_window_fallbacks=self.router.context_window_fallbacks if hasattr(self.router, 'context_window_fallbacks') else [],
+                    num_retries=settings.MODEL_RETRIES,
+                    timeout=settings.MODEL_TIMEOUT,
+                    default_litellm_params={},
+                    set_verbose=False
+                )
+            
+            # 設定を追加
+            self.configs.append(config)
+            logger.info(f"Added model {config.model_name} to router")
+            
+        except Exception as e:
+            logger.error(f"Error adding model to router: {e}", exc_info=True)
+            # エラーが発生しても続行できるように例外をキャッチ
 
     def get_router(self) -> Optional[Router]:
         """
@@ -809,12 +838,12 @@ def init_router_from_db():
             provider_name = db_model["provider_name"]
             model_name = db_model["name"]
 
-            # モデルのフルネーム（Ollamaの場合のみprovider/model形式、他はmodel名のみ）
+            # モデル名のフォーマット
             full_model_name = format_litellm_model_name(provider_name, model_name)
 
             # パラメータを設定 - モデル名も含める
             litellm_params = {
-                "model": full_model_name  # ここでモデル名を指定（Ollamaの場合のみprovider/model形式）
+                "model": full_model_name
             }
             
             # OpenAIの場合はエンドポイントを指定しない（デフォルトを使用）
@@ -941,7 +970,7 @@ def update_router_model(db_model: Dict[str, Any]) -> bool:
         provider_name = db_model["provider_name"]
         model_name = db_model["name"]
 
-        # モデルのフルネーム（Ollamaの場合のみprovider/model形式、他はmodel名のみ）
+        # モデル名のフォーマット
         full_model_name = format_litellm_model_name(provider_name, model_name)
 
         # パラメータを設定
@@ -1055,10 +1084,29 @@ def update_router_model(db_model: Dict[str, Any]) -> bool:
             weight=1  # デフォルトウェイト
         )
 
-        # ルーターを更新（既存のモデルは追加時に更新される）
-        router_manager.add_model(config)
-
-        return True
+        # LiteLLM 1.68.0 互換性対応
+        try:
+            # ルーターを更新
+            router_manager.add_model(config)
+            logger.info(f"Successfully updated router with model: {model_name}")
+            return True
+        except AttributeError as ae:
+            logger.warning(f"Attribute error when adding model to router: {ae}")
+            # ルーターを初期化しなおす方法で対応
+            try:
+                # 既存の設定に新しい設定を追加
+                new_configs = router_manager.configs + [config]
+                # ルーターを再初期化
+                router_manager.initialize(new_configs, routing_strategy=settings.ROUTING_STRATEGY)
+                logger.info(f"Router reinitialized successfully with updated model list")
+                return True
+            except Exception as re_init_error:
+                logger.error(f"Failed to reinitialize router: {re_init_error}", exc_info=True)
+                return False
+        except Exception as e:
+            logger.error(f"Unknown error when updating router model: {e}", exc_info=True)
+            return False
+            
     except Exception as e:
         logger.error(f"Error updating router model: {e}", exc_info=True)
         return False

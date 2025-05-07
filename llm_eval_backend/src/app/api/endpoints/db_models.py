@@ -247,7 +247,15 @@ async def delete_model(model_id: str):
             )
         
         # このモデルを使用しているLiteLLM Routerの設定を更新
-        # 注：モデル削除時はルーターの更新が必要な場合は、ルーターの再初期化が適切かも
+        # モデル削除後はルーターを再初期化
+        try:
+            # ルーター再初期化
+            from app.utils.litellm_helper import init_router_from_db
+            logger.info(f"モデル {model_id} が削除されたため、LiteLLM Routerを再初期化します")
+            init_router_from_db()
+        except Exception as router_err:
+            logger.error(f"ルーター再初期化エラー: {router_err}", exc_info=True)
+            # ルーター更新に失敗してもモデル削除は成功させる
         
     except HTTPException:
         raise

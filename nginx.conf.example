@@ -1,0 +1,68 @@
+# LLM Evaluation Platform - Nginx Configuration Example
+
+# This configuration is intended for production deployments
+# It serves the frontend static files and proxies API requests to the backend
+
+server {
+    listen 80;
+    server_name your-domain.example.com;
+
+    # SSL configuration (recommended for production)
+    # listen 443 ssl;
+    # ssl_certificate /path/to/your/certificate.crt;
+    # ssl_certificate_key /path/to/your/private.key;
+    # ssl_protocols TLSv1.2 TLSv1.3;
+    # ssl_prefer_server_ciphers on;
+
+    # Frontend application - static files
+    location / {
+        root /usr/share/nginx/html;  # Path to the built frontend files
+        index index.html;
+        try_files $uri $uri/ /index.html;  # For SPA routing
+
+        # Cache static assets
+        location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg)$ {
+            expires 30d;
+            add_header Cache-Control "public, no-transform";
+        }
+    }
+
+    # Proxy API requests to the backend
+    location /api/ {
+        # Backend service location (use Docker network name in Docker environments)
+        proxy_pass http://api:8000;
+        
+        # Or use a specific hostname and port if not using Docker networking
+        # proxy_pass http://backend-hostname:8000;
+        
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # WebSocket support (if needed)
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        
+        # Timeouts
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+
+    # MLflow UI access (optional)
+    # Uncomment to enable MLflow UI access through /mlflow path
+    # location /mlflow/ {
+    #     proxy_pass http://mlflow:5000/;
+    #     proxy_set_header Host $host;
+    #     proxy_set_header X-Real-IP $remote_addr;
+    # }
+
+    # Error pages
+    error_page 404 /index.html;
+    error_page 500 502 503 504 /50x.html;
+    location = /50x.html {
+        root /usr/share/nginx/html;
+    }
+}
