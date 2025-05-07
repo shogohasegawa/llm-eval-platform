@@ -771,17 +771,17 @@ async def run_evaluation(
                 ]
                 if scores:  # エラーを除いたスコアがある場合のみ平均を計算
                     avg_score = sum(scores) / len(scores)
-                    all_results[f"{dataset_name}_{shot}shot_{metric_name}"] = avg_score
+                    all_results[f"{base_name}_{shot}shot_{metric_name}"] = avg_score
                     
                     # パラメータ情報も記録（あれば）
                     if metric_name in metrics_parameters:
-                        all_results[f"{dataset_name}_{shot}shot_{metric_name}_parameters"] = metrics_parameters[metric_name]
+                        all_results[f"{base_name}_{shot}shot_{metric_name}_parameters"] = metrics_parameters[metric_name]
                 else:
-                    all_results[f"{dataset_name}_{shot}shot_{metric_name}"] = 0
+                    all_results[f"{base_name}_{shot}shot_{metric_name}"] = 0
             else:
                 logger.warning(f"Metric '{metric_name}' specified in dataset but not found in registry")
 
-        all_results[f"{dataset_name}_{shot}shot_details"] = shot_results
+        all_results[f"{base_name}_{shot}shot_details"] = shot_results
 
     summary = []
     for shot in n_shots:
@@ -792,7 +792,7 @@ async def run_evaluation(
             "num_samples": len(samples)
         }
         # all_results のキーから実際に測定された指標だけ追加
-        prefix = f"{dataset_name}_{shot}shot_"
+        prefix = f"{base_name}_{shot}shot_"
         for key, value in all_results.items():
             if key.startswith(prefix) and not key.endswith("_details"):
                 metric_name = key[len(prefix):]
