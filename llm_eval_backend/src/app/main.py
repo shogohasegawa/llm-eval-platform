@@ -256,9 +256,10 @@ async def mlflow_redirect(path: str):
     return RedirectResponse(url=f"/proxy-mlflow/{path}")
 
 # MLflowのGraphQLエンドポイントへのプロキシ
-@app.get("/graphql")
-@app.post("/graphql")
-@app.options("/graphql")
+# API/Admin UIとの衝突を避けるためにパスをMLflow専用に変更
+@app.get("/proxy-mlflow/graphql")
+@app.post("/proxy-mlflow/graphql") 
+@app.options("/proxy-mlflow/graphql")
 async def graphql_proxy(request: Request):
     """
     MLflowのGraphQLエンドポイントへのプロキシ
