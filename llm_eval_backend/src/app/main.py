@@ -255,6 +255,111 @@ async def debug_mlflow():
 async def mlflow_redirect(path: str):
     return RedirectResponse(url=f"/proxy-mlflow/{path}")
 
+# MLflowのGraphQLエンドポイントへのプロキシ
+@app.get("/graphql")
+@app.post("/graphql")
+@app.options("/graphql")
+async def graphql_proxy(request: Request):
+    """
+    MLflowのGraphQLエンドポイントへのプロキシ
+    新しいバージョンのMLflowはGraphQLを使用することがある
+    """
+    # MLflowサービスへの内部URL（Docker Composeネットワーク内）
+    mlflow_host = os.environ.get("MLFLOW_HOST", "mlflow")
+    mlflow_port = os.environ.get("MLFLOW_PORT", "5000")
+    target_url = f"http://{mlflow_host}:{mlflow_port}/graphql"
+    logger.debug(f"GraphQL proxy request: {request.method} {target_url}")
+    
+    # OPTIONSリクエストの場合は直接レスポンスを返す
+    if request.method == "OPTIONS":
+        headers = {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        }
+        return Response(
+            content=b"",
+            status_code=200,
+            headers=headers
+        )
+    
+    try:
+        # リクエストヘッダーをコピー
+        headers = {}
+        for name, value in request.headers.items():
+            if name.lower() not in ("host", "content-length"):
+                headers[name] = value
+        
+        # リクエストボディを取得
+        body = await request.body() if request.method == "POST" else None
+        
+        # リクエストメソッドに応じたHTTPリクエストを送信
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            if request.method == "GET":
+                response = await client.get(
+                    target_url, 
+                    headers=headers,
+                    params=dict(request.query_params),
+                    follow_redirects=True
+                )
+            elif request.method == "POST":
+                response = await client.post(
+                    target_url, 
+                    headers=headers, 
+                    content=body,
+                    follow_redirects=True
+                )
+            
+            # レスポンスヘッダーを設定
+            headers_to_forward = dict(response.headers)
+            headers_to_remove = ["content-encoding", "content-length", "transfer-encoding", "connection"]
+            for header in headers_to_remove:
+                if header in headers_to_forward:
+                    del headers_to_forward[header]
+            
+            # CORSヘッダーを追加
+            headers_to_forward["Access-Control-Allow-Origin"] = "*"
+            headers_to_forward["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+            headers_to_forward["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+            
+            # レスポンスコンテンツを取得
+            content = response.content
+            content_type = response.headers.get("content-type", "application/json")
+            
+            # JSONの場合、URLを書き換え
+            if content_type.startswith("application/json"):
+                try:
+                    content_text = content.decode("utf-8")
+                    
+                    # すべてのMLflow URLをプロキシURLに変換
+                    content_text = content_text.replace('http://localhost:5000', '/proxy-mlflow')
+                    content_text = content_text.replace('http://mlflow:5000', '/proxy-mlflow')
+                    content_text = content_text.replace(f'http://{mlflow_host}:{mlflow_port}', '/proxy-mlflow')
+                    content_text = content_text.replace('http://0.0.0.0:5000', '/proxy-mlflow')
+                    
+                    # 一般的なIPアドレスパターンの置換
+                    import re
+                    ip_pattern = r'http://\d+\.\d+\.\d+\.\d+:5000'
+                    content_text = re.sub(ip_pattern, '/proxy-mlflow', content_text)
+                    
+                    content = content_text.encode("utf-8")
+                except Exception as e:
+                    logger.warning(f"GraphQL JSONコンテンツの書き換えに失敗しました: {e}")
+            
+            # レスポンスを返す
+            return Response(
+                content=content,
+                status_code=response.status_code,
+                headers=headers_to_forward,
+                media_type=content_type
+            )
+    except Exception as e:
+        logger.error(f"GraphQLプロキシエラー: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"detail": f"GraphQLリクエスト処理エラー: {str(e)}"}
+        )
+
 @app.get("/mlflow-ui", response_class=HTMLResponse)
 async def mlflow_ui():
     html_content = """
@@ -693,10 +798,28 @@ async def proxy_mlflow(path: str, request: Request):
             elif content_type.startswith("application/json"):
                 try:
                     content_text = content.decode("utf-8")
+                    
+                    # すべてのMLflow絶対URLをプロキシURLに変換
                     content_text = content_text.replace('http://localhost:5000', '/proxy-mlflow')
                     content_text = content_text.replace('http://mlflow:5000', '/proxy-mlflow')
+                    
+                    # 環境変数で設定されたホスト名も置換
+                    mlflow_host = os.environ.get("MLFLOW_HOST", "mlflow")
+                    mlflow_port = os.environ.get("MLFLOW_PORT", "5000")
+                    if mlflow_host != "mlflow" or mlflow_port != "5000":
+                        content_text = content_text.replace(f'http://{mlflow_host}:{mlflow_port}', '/proxy-mlflow')
+                    
+                    # IPアドレスベースのURLも置換
+                    content_text = content_text.replace('http://0.0.0.0:5000', '/proxy-mlflow')
+                    
+                    # 一般的なIPアドレスパターンも置換（任意のIPアドレスを検出）
+                    import re
+                    ip_pattern = r'http://\d+\.\d+\.\d+\.\d+:5000'
+                    content_text = re.sub(ip_pattern, '/proxy-mlflow', content_text)
+                    
                     content = content_text.encode("utf-8")
-                except:
+                except Exception as e:
+                    logger.warning(f"JSONコンテンツの書き換えに失敗しました: {e}")
                     # デコードに失敗した場合は元のコンテンツを使用
                     pass
             
