@@ -411,8 +411,8 @@ async def call_model_with_router(
             response_params["model"] = model
             logger.info(f"モデル名をモデル名のみに調整: {response_params['model']}")
         
-        # プロバイダを明示的に設定
-        response_params["provider"] = provider
+        # プロバイダは直接設定せず、モデル名に含める
+        # provider パラメータは LiteLLM API では受け付けられないため削除
         
         try:
             # 非同期で呼び出し

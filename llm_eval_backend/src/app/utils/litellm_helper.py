@@ -1027,8 +1027,8 @@ def update_router_model(db_model: Dict[str, Any]) -> bool:
             # APIキーを設定しない - この場合、LiteLLMのリクエスト時にエラーが発生する
             # Router は各モデルのパラメータを使用し、デフォルトのAPIキーは使用しない
 
-        # プロバイダ名を設定
-        litellm_params["provider"] = provider_name.lower()
+        # プロバイダ名は直接設定せず、モデル名に含める形式を使用
+        # provider パラメータは LiteLLM API では受け付けられないため削除
         
         # エンドポイント取得
         endpoint = None
