@@ -63,6 +63,7 @@ export interface InferenceFormData {
   name: string;
   description?: string;
   datasetId: string;
+  datasetType?: string;  // データセットタイプ（'test' または 'n_shot'）
   providerId: string;
   modelId: string;
   // 評価パラメータ（オプション）
@@ -71,6 +72,8 @@ export interface InferenceFormData {
   maxTokens?: number;    // 最大トークン数（デフォルト: 512）
   temperature?: number;  // 温度パラメータ（デフォルト: 0.7）
   topP?: number;         // Top-pサンプリング（デフォルト: 1.0）
+  // バックエンドAPI用のスネークケース形式フィールド
+  dataset_type?: string; // データセットタイプ（'test' または 'n_shot'）
 }
 
 export interface InferenceFilterOptions {

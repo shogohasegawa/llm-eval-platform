@@ -142,24 +142,33 @@ async def list_datasets(type: Optional[str] = Query(None, description="データ
 
 @router.get("/{name}", response_model=DatasetDetailResponse)
 async def get_dataset_detail(
-    name: str = PathParam(..., description="データセット名")
+    name: str = PathParam(..., description="データセット名"),
+    type: Optional[str] = Query(None, description="データセットタイプ ('test' または 'n_shot')")
 ):
     """
     データセットの詳細情報を取得
     
     Args:
         name: データセット名
+        type: データセットタイプ (オプション)
         
     Returns:
         DatasetDetailResponse: データセットの詳細情報
     """
     try:
-        dataset = get_dataset_by_name(name)
+        # タイプが指定されている場合はチェック
+        if type and type not in ["test", "n_shot"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="無効なデータセットタイプです。'test' または 'n_shot' を指定してください。"
+            )
+        
+        dataset = get_dataset_by_name(name, type)
         
         if not dataset:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"データセット '{name}' が見つかりません。"
+                detail=f"データセット '{name}'{' (' + type + ')' if type else ''} が見つかりません。"
             )
         
         return DatasetDetailResponse(

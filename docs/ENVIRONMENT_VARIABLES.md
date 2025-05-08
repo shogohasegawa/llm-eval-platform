@@ -4,79 +4,87 @@
 
 ## 環境変数ファイル構成
 
-プロジェクトには複数の環境変数ファイルが存在します：
+プロジェクトの環境変数は一元化されています：
 
-1. `/.env` - プロジェクトのルートにある主要な環境変数ファイル
-2. `/.env.example` - 環境変数のテンプレート
-3. `/llm_eval_backend/.env` - バックエンド固有の環境変数
-4. `/llm_eval_backend/.env.sample` - バックエンド環境変数のテンプレート
-5. `/llm_eval_frontend/.env` - フロントエンド固有の環境変数
-6. `/llm_eval_frontend/.env.example` - フロントエンド環境変数のテンプレート
+1. `/.env` - プロジェクトのルートにある統合された環境変数ファイル（すべての設定を含む）
+2. `/.env.example` - 環境変数のテンプレート（.envを作成する際の参考用）
+
+**重要**: 環境変数を追加・編集する場合は、ルートディレクトリの`.env`ファイルのみを編集してください。
 
 ## 環境変数の読み込み階層
 
 環境変数は以下の優先順位で読み込まれます：
 
 1. コマンドラインで直接設定された環境変数
-2. ローカルの`.env`ファイル
-3. デフォルト値
+2. ルートの`.env`ファイル（Docker Composeで読み込まれる）
+
+**重要**: システムはデフォルト値を持たないため、必要な環境変数がすべて`.env`ファイルに設定されていることを確認してください。設定されていない場合、明示的にエラーが発生します。
 
 ## 主要なカテゴリと環境変数
 
 ### 基本設定
 
-| 変数名 | デフォルト値 | 説明 | 使用場所 |
-|--------|------------|------|---------|
-| `LLMEVAL_ENV` | `production` | 環境設定（development, production） | 設定クラス、docker-compose.yml |
-| `LLMEVAL_LOG_LEVEL` | `INFO` | ログレベル設定 | main.py、設定クラス |
-| `LLMEVAL_DB_PATH` | `/external_data/llm_eval.db` | データベースファイルパス | docker-compose.yml |
-| `TZ` | `Asia/Tokyo` | タイムゾーン設定 | すべてのコンテナ |
+| 変数名 | 説明 | 使用場所 |
+|--------|------|---------|
+| `LLMEVAL_ENV` | 環境設定（development, production） | 設定クラス、docker-compose.yml |
+| `LLMEVAL_LOG_LEVEL` | ログレベル設定 | main.py、設定クラス |
+| `LLMEVAL_DB_PATH` | データベースファイルパス | docker-compose.yml |
+| `TZ` | タイムゾーン設定 | すべてのコンテナ |
 
 ### ネットワーク設定
 
-| 変数名 | デフォルト値 | 説明 | 使用場所 |
-|--------|------------|------|---------|
-| `API_PORT` | `8001` | APIサーバーポート | docker-compose.yml |
-| `FRONTEND_PORT` | `4173` | フロントエンドサーバーポート | docker-compose.yml |
-| `MLFLOW_EXTERNAL_PORT` | `5000` | MLflowサーバー外部ポート | docker-compose.yml |
-| `OLLAMA_PORT` | `11434` | Ollamaサーバーポート | docker-compose.yml |
+| 変数名 | 説明 | 使用場所 |
+|--------|------|---------|
+| `API_PORT` | APIサーバーポート | docker-compose.yml |
+| `FRONTEND_PORT` | フロントエンドサーバーポート | docker-compose.yml |
+| `MLFLOW_EXTERNAL_PORT` | MLflowサーバー外部ポート | docker-compose.yml |
+| `OLLAMA_PORT` | Ollamaサーバーポート | docker-compose.yml |
 
 ### フロントエンド設定
 
-| 変数名 | デフォルト値 | 説明 | 使用場所 |
-|--------|------------|------|---------|
-| `VITE_API_BASE_URL` | `` (空) | フロントエンド用APIベースURL | client.ts |
-| `VITE_OLLAMA_BASE_URL` | `/ollama` | Ollamaプロキシパス | proxy-ollama.ts |
-| `VITE_MLFLOW_BASE_URL` | `/mlflow` | MLflowプロキシパス | mlflow.ts |
-| `VITE_API_TIMEOUT` | `60000` | APIリクエストタイムアウト（ミリ秒） | client.ts |
-| `VITE_DEBUG_MODE` | `false` | デバッグモード | フロントエンド全体 |
-| `VITE_APP_NAME` | `LLM評価プラットフォーム` | アプリケーション名 | UI表示 |
-| `VITE_APP_VERSION` | `1.0.0` | アプリケーションバージョン | UI表示 |
-| `VITE_LOG_LEVEL` | `INFO` | ログレベル | フロントエンドロギング |
+| 変数名 | 説明 | 使用場所 |
+|--------|------|---------|
+| `VITE_API_BASE_URL` | フロントエンド用APIベースURL | client.ts |
+| `VITE_OLLAMA_BASE_URL` | Ollamaプロキシパス | proxy-ollama.ts |
+| `VITE_MLFLOW_BASE_URL` | MLflowプロキシパス | mlflow.ts |
+| `VITE_API_TIMEOUT` | APIリクエストタイムアウト（ミリ秒） | client.ts |
+| `VITE_DEBUG_MODE` | デバッグモード | フロントエンド全体 |
+| `VITE_APP_NAME` | アプリケーション名 | UI表示 |
+| `VITE_APP_VERSION` | アプリケーションバージョン | UI表示 |
+| `VITE_LOG_LEVEL` | ログレベル | フロントエンドロギング |
 
 ### MLflow設定
 
-| 変数名 | デフォルト値 | 説明 | 使用場所 |
-|--------|------------|------|---------|
-| `MLFLOW_HOST` | `mlflow` | MLflowホスト名 | docker-compose.yml、main.py |
-| `MLFLOW_PORT` | `5000` | MLflowポート | docker-compose.yml、main.py |
-| `MLFLOW_HOST_URI` | `http://mlflow:5000` | MLflowホストURI | docker-compose.yml、proxy.py |
-| `LLMEVAL_MLFLOW_TRACKING_URI` | `http://mlflow:5000` | コンテナ間通信用MLflowトラッキングURI | 設定クラス |
-| `LLMEVAL_MLFLOW_EXTERNAL_URI` | サーバーIPアドレス | 外部アクセス用MLflow URL | プロキシ設定 |
+| 変数名 | 説明 | 使用場所 |
+|--------|------|---------|
+| `MLFLOW_HOST` | MLflowホスト名 | docker-compose.yml、main.py |
+| `MLFLOW_PORT` | MLflowポート | docker-compose.yml、main.py |
+| `MLFLOW_HOST_URI` | MLflowホストURI | docker-compose.yml、proxy.py |
+| `LLMEVAL_MLFLOW_EXTERNAL_URI` | 外部アクセス用MLflow URL | プロキシ設定 |
 
 ### Ollama設定
 
-| 変数名 | デフォルト値 | 説明 | 使用場所 |
-|--------|------------|------|---------|
-| `OLLAMA_BASE_URL` | `http://ollama:11434` | OllamaベースURL | docker-compose.yml、ollama_manager.py、main.py |
-| `OLLAMA_HOST` | `0.0.0.0` | Ollamaホスト | ollamaコンテナ |
-| `OLLAMA_MODELS_PATH` | `/root/.ollama` | Ollamaモデル保存パス | ollamaコンテナ |
-| `OLLAMA_ORIGINS` | `*` | OllamaのCORS設定 | ollamaコンテナ |
-| `LLMEVAL_OLLAMA_BASE_URL` | サーバーIPアドレス | 開発環境でのOllamaサーバーURL | バックエンド設定 |
+| 変数名 | 説明 | 使用場所 |
+|--------|------|---------|
+| `OLLAMA_BASE_URL` | OllamaベースURL | docker-compose.yml、proxy.py |
+| `OLLAMA_HOST` | Ollamaホスト | ollamaコンテナ |
+| `OLLAMA_MODELS_PATH` | Ollamaモデル保存パス | ollamaコンテナ |
+| `OLLAMA_ORIGINS` | OllamaのCORS設定 | ollamaコンテナ |
+| `LLMEVAL_OLLAMA_BASE_URL` | 開発環境でのOllamaサーバーURL | バックエンド設定 |
 
 ### バックエンド固有の設定
 
-バックエンド固有の設定変数は `LLMEVAL_` プレフィックスが付いており、Pydanticの`BaseSettings`クラスで自動的に読み込まれます。詳細は`llm_eval_backend/src/app/config/config.py`を参照してください。
+バックエンド固有の設定変数は `LLMEVAL_` プレフィックスが付いており、Pydanticの`BaseSettings`クラスで自動的に読み込まれます。詳細は`llm_eval_backend/src/app/config/config.py`を参照してください。主な変数には以下のものがあります：
+
+| 変数名 | 説明 |
+|--------|------|
+| `LLMEVAL_DATASET_DIR` | テスト用データセットのパス |
+| `LLMEVAL_TRAIN_DIR` | n-shot用データセットのパス |
+| `LLMEVAL_RESULTS_DIR` | 結果保存ディレクトリ |
+| `LLMEVAL_DEFAULT_MAX_TOKENS` | 生成するトークンの最大数 |
+| `LLMEVAL_DEFAULT_TEMPERATURE` | 生成時の温度パラメータ |
+| `LLMEVAL_MODEL_TIMEOUT` | モデル呼び出しのタイムアウト時間 |
+| `LLMEVAL_BATCH_SIZE` | バッチ処理サイズ |
 
 ### フロントエンド固有の設定
 
@@ -84,10 +92,16 @@
 
 ## 環境変数管理のベストプラクティス
 
+### 新しい環境変数の追加
+
+1. ルートの`.env`ファイルと`.env.example`ファイルの両方に追加する
+2. 適切なカテゴリに配置し、詳細なコメントを追加する
+3. 環境変数ドキュメント（このファイル）も更新する
+
 ### バックエンド変数
 
 1. 設定クラスで使用する変数は必ず`LLMEVAL_`プレフィックスを付ける
-2. `/llm_eval_backend/.env`での設定はローカル開発のみに使用し、本番環境ではルートの`.env`に設定を集約する
+2. `LLMEVAL_`プレフィックスのついた変数は、`config.py`の`Settings`クラスのフィールドとして定義すると自動的に読み込まれる
 
 ### フロントエンド変数
 
@@ -98,15 +112,8 @@
 ### 接続変数
 
 1. サービス間接続のURLは一貫した命名規則を使用する
-2. 開発環境と本番環境で異なる接続設定を使用する場合は、デフォルト値で明確にする
-   例: `MLFLOW_HOST_URI=${MLFLOW_HOST_URI:-http://mlflow:5000}`
-
-## 環境変数の追加・変更時の注意点
-
-1. 新しい環境変数を追加する場合は、`.env.example`と対応するドキュメントも更新してください
-2. `LLMEVAL_`プレフィックスの変数はバックエンドの設定クラスに自動的に読み込まれます
-3. サービス間接続用の変数（MLFLOW_HOST, OLLAMA_BASE_URLなど）はdocker-compose.ymlとプロキシコードで直接参照されています
-4. フロントエンド用の変数は`VITE_`プレフィックスが必要です
+2. すべての必要な変数が`.env`ファイルに定義されていることを確認する（デフォルト値は使用しない）
+3. 未設定の場合にシステムがエラーを明示的に表示するため、問題の早期発見が可能
 
 ## 環境変数使用場所のまとめ
 

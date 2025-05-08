@@ -36,6 +36,8 @@ const DatasetDetail: React.FC = () => {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const { setError } = useAppContext();
+  const [searchParams] = React.useState(() => new URLSearchParams(window.location.search));
+  const datasetType = searchParams.get('type');
 
   // 展開状態を管理
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
@@ -43,37 +45,37 @@ const DatasetDetail: React.FC = () => {
   const [page, setPage] = useState(1);
   const itemsPerPage = 50;
 
-  // データセット詳細の取得
+  // データセット詳細の取得 - 名前とタイプの両方を指定
   const {
     data: dataset,
     isLoading,
     isError,
     error,
-  } = useDatasetByName(id || '');
+  } = useDatasetByName(id || '', datasetType || undefined);
   
-  // サンプルデータとマージするための処理
+  // データセットを処理する
   const enhancedDataset = React.useMemo(() => {
     if (!dataset) return null;
     
-    // サンプルデータを使ってデータセットを拡張
-    const sampleData = {
-      instruction: '以下の質問に対して適切な回答を作成してください。',
-      metrics: ['char_f1', 'exact_match'],
-      output_length: 1024,
-    };
-    
-    // 実際の実装では、実データを使用するためのロジックをここに追加
-    // 今回はデモのため、サンプルデータを直接追加
+    // データセットをそのまま返す（デフォルト値を使用しない）
     return {
       ...dataset,
-      instruction: dataset.instruction || sampleData.instruction,
-      metrics: dataset.metrics || sampleData.metrics,
-      output_length: dataset.output_length || sampleData.output_length,
+      // デフォルト値を設定しない - 実際のデータのみを使用
+      instruction: dataset.instruction,
+      metrics: dataset.metrics,
+      output_length: dataset.output_length,
     };
   }, [dataset]);
   
   // デバッグ出力
   React.useEffect(() => {
+    // パラメータ情報をログ出力
+    console.log('データセット詳細パラメータ:', { 
+      id, 
+      datasetType,
+      searchParams: Object.fromEntries(searchParams.entries())
+    });
+    
     if (dataset) {
       console.log('元のデータセット:', dataset);
       console.log('拡張したデータセット:', enhancedDataset);
@@ -103,16 +105,18 @@ const DatasetDetail: React.FC = () => {
         });
       }
     }
-  }, [dataset, enhancedDataset]);
+  }, [id, datasetType, searchParams, dataset, enhancedDataset]);
 
   // エラーハンドリング
   if (error) {
     setError(`データセットの取得に失敗しました: ${error.message}`);
   }
 
-  // 戻るボタンのハンドラ
+  // 戻るボタンのハンドラ - 元のタブを保持
   const handleGoBack = () => {
-    navigate('/datasets');
+    // タイプがあれば戻り先でも対応するタブを表示
+    const tabParam = datasetType ? `?tab=${datasetType}` : '';
+    navigate(`/datasets${tabParam}`);
   };
 
   // アイテムの展開/折りたたみを切り替える
@@ -281,27 +285,41 @@ const DatasetDetail: React.FC = () => {
                       共通指示パターン
                     </Typography>
                     <Box sx={{ maxHeight: '200px', overflow: 'auto' }}>
-                      {/* データセットレベルの指示があれば表示 */}
-                      {enhancedDataset.instruction && (
+                      {/* データセットレベルの指示があれば表示、なければ「指示なし」と表示 */}
+                      {enhancedDataset.instruction ? (
                         <Typography variant="body2" sx={{ mb: 1, whiteSpace: 'pre-wrap', fontWeight: 'bold' }}>
                           {enhancedDataset.instruction.length > 200 ? `${enhancedDataset.instruction.substring(0, 200)}...` : enhancedDataset.instruction}
+                        </Typography>
+                      ) : (
+                        <Typography variant="body2" sx={{ mb: 1, fontStyle: 'italic', color: 'text.secondary' }}>
+                          データセットレベルの指示はありません
                         </Typography>
                       )}
                       
                       {/* アイテムレベルの指示があれば表示 */}
-                      {enhancedDataset.items.some(item => item.instruction) && 
-                        Array.from(new Set(enhancedDataset.items
-                          .filter(item => item.instruction)
-                          .map(item => item.instruction)
-                          .slice(0, 3)))
-                          .map((instruction, idx) => (
-                            <Typography key={idx} variant="body2" sx={{ mb: 1, whiteSpace: 'pre-wrap' }}>
-                              {instruction.length > 200 ? `${instruction.substring(0, 200)}...` : instruction}
+                      {enhancedDataset.items.some(item => item.instruction) ? (
+                        <>
+                          <Typography variant="subtitle2" sx={{ mt: 2, mb: 1, color: 'text.secondary' }}>
+                            アイテムレベルの指示例:
+                          </Typography>
+                          {Array.from(new Set(enhancedDataset.items
+                            .filter(item => item.instruction)
+                            .map(item => item.instruction)
+                            .slice(0, 3)))
+                            .map((instruction, idx) => (
+                              <Typography key={idx} variant="body2" sx={{ mb: 1, whiteSpace: 'pre-wrap' }}>
+                                {instruction.length > 200 ? `${instruction.substring(0, 200)}...` : instruction}
+                              </Typography>
+                            ))}
+                          {enhancedDataset.items.filter(item => item.instruction).length > 3 && (
+                            <Typography variant="body2" color="text.secondary">
+                              ...他 {enhancedDataset.items.filter(item => item.instruction).length - 3} 件
                             </Typography>
-                          ))}
-                      {enhancedDataset.items.filter(item => item.instruction).length > 3 && (
-                        <Typography variant="body2" color="text.secondary">
-                          ...他 {enhancedDataset.items.filter(item => item.instruction).length - 3} 件
+                          )}
+                        </>
+                      ) : !enhancedDataset.instruction && (
+                        <Typography variant="body2" sx={{ fontStyle: 'italic', color: 'text.secondary' }}>
+                          アイテムレベルの指示もありません
                         </Typography>
                       )}
                     </Box>

@@ -183,15 +183,27 @@ const InferenceFormDialog: React.FC<InferenceFormDialogProps> = ({
   // フォーム送信
   const handleSubmit = () => {
     if (validate()) {
+      // データセットIDから名前とタイプを抽出（"name__type"形式）
+      let datasetName = formData.datasetId;
+      let datasetType = '';
+      
+      if (formData.datasetId && formData.datasetId.includes('__')) {
+        const parts = formData.datasetId.split('__');
+        datasetName = parts[0];
+        datasetType = parts[1];
+      }
+      
       // APIによる推論作成のためにデータを準備
       const processedData = {
         ...formData,
         // ユーザーが指定したサンプル数をそのまま使用
         numSamples: formData.numSamples,
-        // データセットIDを正規化（パスの場合は適切な形式に）
-        datasetId: formData.datasetId,
+        // 名前とタイプを分離
+        datasetId: datasetName,
+        datasetType: datasetType, // 新しいフィールド
         // スネークケース形式のフィールド名を追加（バックエンドAPI用）
-        dataset_id: formData.datasetId,
+        dataset_id: datasetName,
+        dataset_type: datasetType, // 新しいフィールド
         provider_id: formData.providerId,
         model_id: formData.modelId,
         num_samples: formData.numSamples,
@@ -203,7 +215,8 @@ const InferenceFormDialog: React.FC<InferenceFormDialogProps> = ({
       // 詳細なログを出力
       console.log('フォーム送信データ (元):', formData);
       console.log('フォーム送信データ (処理後):', processedData);
-      console.log('データセットID:', processedData.datasetId);
+      console.log('データセット名:', processedData.datasetId);
+      console.log('データセットタイプ:', processedData.datasetType);
       console.log('サンプル数:', processedData.numSamples);
       
       // 処理済みデータを送信
@@ -297,7 +310,7 @@ const InferenceFormDialog: React.FC<InferenceFormDialogProps> = ({
                 {datasets.map((dataset) => (
                   <MenuItem 
                     key={dataset.id || dataset.name} 
-                    value={dataset.name || ''} // データセット名を値として使用（バックエンドが名前を期待）
+                    value={`${dataset.name}__${dataset.type}`} // 名前とタイプを組み合わせた値を使用
                   >
                     {dataset.name} ({dataset.type || ''})
                     {/* デバッグ情報は削除 */}

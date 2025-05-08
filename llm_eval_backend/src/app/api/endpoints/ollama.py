@@ -154,12 +154,23 @@ async def get_download_status(download_id: str):
     ollama_manager = get_ollama_manager()
     
     try:
+        logger.info(f"[OLLAMA_API] ダウンロードステータス取得リクエスト: ID={download_id}")
         download_info = ollama_manager.get_download(download_id)
+        
         if not download_info:
+            logger.warning(f"[OLLAMA_API] ダウンロードIDが見つかりません: {download_id}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"ダウンロードID '{download_id}' が見つかりません"
             )
+        
+        # 返却前にステータス情報をログ出力
+        status_value = download_info.get("status", "unknown")
+        error_value = download_info.get("error")
+        progress_value = download_info.get("progress", 0)
+        model_name = download_info.get("model_name", "unknown")
+        
+        logger.info(f"[OLLAMA_API] ダウンロードステータス応答: ID={download_id}, モデル={model_name}, ステータス={status_value}, 進捗={progress_value}%, エラー={error_value}")
         
         return download_info
     

@@ -140,30 +140,40 @@ def _get_datasets_from_dir(directory: Path, dataset_type: str) -> List[DatasetMe
     return datasets
 
 
-def get_dataset_by_name(name: str) -> Optional[Dict[str, Any]]:
+def get_dataset_by_name(name: str, type: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """
-    名前でデータセットを検索する
+    名前とタイプでデータセットを検索する
     
     Args:
         name: 検索するデータセット名
+        type: 検索するデータセットタイプ (オプション)
         
     Returns:
         Optional[Dict[str, Any]]: データセットが見つかった場合はデータセット情報、見つからない場合はNone
     """
     datasets = get_datasets_list()
     
-    # 名前が完全一致するデータセットを検索
-    for dataset_meta in datasets:
-        if dataset_meta.name == name:
-            # ファイルからデータセットの内容を読み込む
-            try:
-                dataset = get_dataset_by_path(dataset_meta.file_path)
-                if dataset:
-                    return dataset
-            except Exception as e:
-                logger.error(f"データセットの読み込みに失敗しました: {dataset_meta.file_path}, エラー: {e}")
-                return None
+    # タイプが指定されている場合はタイプでフィルタリング
+    if type:
+        filtered_datasets = [d for d in datasets if d.type == type and d.name == name]
+    else:
+        filtered_datasets = [d for d in datasets if d.name == name]
     
+    # 一致するデータセットが見つかった場合
+    for dataset_meta in filtered_datasets:
+        # ファイルからデータセットの内容を読み込む
+        try:
+            dataset = get_dataset_by_path(dataset_meta.file_path)
+            if dataset:
+                # デバッグ情報を追加
+                logger.info(f"データセットを取得しました: {dataset_meta.name} (タイプ: {dataset_meta.type}), パス: {dataset_meta.file_path}")
+                return dataset
+        except Exception as e:
+            logger.error(f"データセットの読み込みに失敗しました: {dataset_meta.file_path}, エラー: {e}")
+            continue
+    
+    # 一致するデータセットが見つからなかった場合
+    logger.warning(f"データセットが見つかりません: {name}{' (タイプ: ' + type + ')' if type else ''}")
     return None
 
 

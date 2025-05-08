@@ -190,6 +190,14 @@ class DatasetItem(BaseModel):
     additional_data: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
 
+class MetricConfig(BaseModel):
+    """メトリクス設定"""
+    name: str
+    parameters: Optional[Dict[str, Any]] = None
+    
+    class Config:
+        extra = "allow"  # 追加のフィールドを許可
+
 class DatasetMetadata(BaseModel):
     """データセットのメタデータ"""
     name: str
@@ -198,6 +206,12 @@ class DatasetMetadata(BaseModel):
     created_at: datetime
     item_count: int
     file_path: str
+    instruction: Optional[str] = None
+    metrics: Optional[Union[List[Union[str, Dict[str, Any], MetricConfig]], Dict[str, Any]]] = None
+    output_length: Optional[int] = None
+    
+    class Config:
+        extra = "allow"  # 追加のフィールドを許可
 
 
 class DatasetListResponse(BaseModel):
@@ -262,6 +276,7 @@ class InferenceCreate(BaseModel):
     name: str
     description: Optional[str] = None
     dataset_id: str
+    dataset_type: Optional[str] = None  # データセットタイプ ('test' または 'n_shot')
     provider_id: str
     model_id: str
     max_tokens: Optional[int] = 512

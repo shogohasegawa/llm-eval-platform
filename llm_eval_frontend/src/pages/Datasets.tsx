@@ -86,7 +86,8 @@ const Datasets: React.FC = () => {
   
   // データセットの詳細を表示
   const handleViewDataset = (dataset: Dataset) => {
-    navigate(`/datasets/${dataset.name}`);
+    // データセット名とタイプの両方を含むURLパラメータを構築
+    navigate(`/datasets/${dataset.name}?type=${dataset.type}`);
   };
 
   // タブ変更ハンドラ

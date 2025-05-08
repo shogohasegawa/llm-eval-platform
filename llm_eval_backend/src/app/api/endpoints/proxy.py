@@ -14,11 +14,11 @@ logger = logging.getLogger("llmeval")
 
 # プロキシ設定
 OLLAMA_BASE_URLS = [
-    os.environ.get("OLLAMA_BASE_URL", "http://ollama:11434"),
-    os.environ.get("OLLAMA_EXTERNAL_URL", "")
+    os.environ.get("OLLAMA_BASE_URL"),
+    os.environ.get("OLLAMA_EXTERNAL_URL")
 ]
 
-MLFLOW_BASE_URL = os.environ.get("MLFLOW_HOST_URI", "http://mlflow:5000")
+MLFLOW_BASE_URL = os.environ.get("MLFLOW_HOST_URI")
 
 @router.get("/proxy-ollama/{path:path}")
 @router.post("/proxy-ollama/{path:path}")

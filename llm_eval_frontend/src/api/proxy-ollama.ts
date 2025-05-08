@@ -68,8 +68,8 @@ export const ollamaDirectApi = {
    * @returns 生成されたテキストレスポンス
    */
   generateCompletion: async (options: OllamaGenerateRequest): Promise<OllamaGenerateResponse> => {
-    // プロキシURL（環境変数から取得またはデフォルト）
-    const ollamaBaseUrl = import.meta.env.VITE_OLLAMA_BASE_URL || '/ollama';
+    // プロキシURL（環境変数から取得）
+    const ollamaBaseUrl = import.meta.env.VITE_OLLAMA_BASE_URL;
     const url = `${ollamaBaseUrl}/api/generate`;
     
     console.log(`Requesting Ollama completion via proxy: ${url}`);
@@ -100,7 +100,7 @@ export const ollamaDirectApi = {
    * @returns モデル情報の配列
    */
   getModels: async (): Promise<OllamaModelInfo[]> => {
-    const ollamaBaseUrl = import.meta.env.VITE_OLLAMA_BASE_URL || '/ollama';
+    const ollamaBaseUrl = import.meta.env.VITE_OLLAMA_BASE_URL;
     const url = `${ollamaBaseUrl}/api/tags`;
     
     console.log(`Requesting Ollama models via proxy: ${url}`);
@@ -134,7 +134,7 @@ export const ollamaDirectApi = {
     onDone: (fullResponse: OllamaGenerateResponse) => void,
     onError: (error: Error) => void
   ): Promise<void> => {
-    const ollamaBaseUrl = import.meta.env.VITE_OLLAMA_BASE_URL || '/ollama';
+    const ollamaBaseUrl = import.meta.env.VITE_OLLAMA_BASE_URL;
     const url = `${ollamaBaseUrl}/api/generate`;
     
     console.log(`Requesting Ollama streaming completion via proxy: ${url}`);

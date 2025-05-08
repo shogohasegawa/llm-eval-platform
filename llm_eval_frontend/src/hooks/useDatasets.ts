@@ -14,11 +14,11 @@ export const useDatasets = (type) => {
   });
 };
 
-// 特定のデータセットを取得するフック（名前ベース）
-export const useDatasetByName = (name) => {
+// 特定のデータセットを取得するフック（名前とタイプベース）
+export const useDatasetByName = (name, type) => {
   return useQuery({
-    queryKey: ["datasets", "detail", name],
-    queryFn: () => datasetsApi.getDatasetByName(name),
+    queryKey: ["datasets", "detail", name, type],
+    queryFn: () => datasetsApi.getDatasetByName(name, type),
     enabled: name ? true : false
   });
 };
