@@ -10,6 +10,8 @@
 2. `/.env.example` - 環境変数のテンプレート
 3. `/llm_eval_backend/.env` - バックエンド固有の環境変数
 4. `/llm_eval_backend/.env.sample` - バックエンド環境変数のテンプレート
+5. `/llm_eval_frontend/.env` - フロントエンド固有の環境変数
+6. `/llm_eval_frontend/.env.example` - フロントエンド環境変数のテンプレート
 
 ## 環境変数の読み込み階層
 
@@ -46,6 +48,11 @@
 | `VITE_API_BASE_URL` | `` (空) | フロントエンド用APIベースURL | client.ts |
 | `VITE_OLLAMA_BASE_URL` | `/ollama` | Ollamaプロキシパス | proxy-ollama.ts |
 | `VITE_MLFLOW_BASE_URL` | `/mlflow` | MLflowプロキシパス | mlflow.ts |
+| `VITE_API_TIMEOUT` | `60000` | APIリクエストタイムアウト（ミリ秒） | client.ts |
+| `VITE_DEBUG_MODE` | `false` | デバッグモード | フロントエンド全体 |
+| `VITE_APP_NAME` | `LLM評価プラットフォーム` | アプリケーション名 | UI表示 |
+| `VITE_APP_VERSION` | `1.0.0` | アプリケーションバージョン | UI表示 |
+| `VITE_LOG_LEVEL` | `INFO` | ログレベル | フロントエンドロギング |
 
 ### MLflow設定
 
@@ -70,6 +77,29 @@
 ### バックエンド固有の設定
 
 バックエンド固有の設定変数は `LLMEVAL_` プレフィックスが付いており、Pydanticの`BaseSettings`クラスで自動的に読み込まれます。詳細は`llm_eval_backend/src/app/config/config.py`を参照してください。
+
+### フロントエンド固有の設定
+
+フロントエンドの環境変数は必ず`VITE_`プレフィックスを付ける必要があります。これはViteのセキュリティ制限であり、`VITE_`プレフィックスのない変数はフロントエンドコードからアクセスできません。
+
+## 環境変数管理のベストプラクティス
+
+### バックエンド変数
+
+1. 設定クラスで使用する変数は必ず`LLMEVAL_`プレフィックスを付ける
+2. `/llm_eval_backend/.env`での設定はローカル開発のみに使用し、本番環境ではルートの`.env`に設定を集約する
+
+### フロントエンド変数
+
+1. フロントエンド用の変数は必ず`VITE_`プレフィックスが必要
+2. 機密情報（APIキーなど）はフロントエンド用の環境変数に設定しない
+3. フロントエンドの環境変数はビルド時に埋め込まれる静的な値として扱われる
+
+### 接続変数
+
+1. サービス間接続のURLは一貫した命名規則を使用する
+2. 開発環境と本番環境で異なる接続設定を使用する場合は、デフォルト値で明確にする
+   例: `MLFLOW_HOST_URI=${MLFLOW_HOST_URI:-http://mlflow:5000}`
 
 ## 環境変数の追加・変更時の注意点
 
