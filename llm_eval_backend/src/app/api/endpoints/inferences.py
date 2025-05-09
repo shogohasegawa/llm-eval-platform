@@ -160,6 +160,10 @@ async def create_inference(
         # "test/example.json" -> "example"
         dataset_name = inference_data.dataset_id.split('/')[-1].replace('.json', '')
         
+        # データセットタイプが指定されているか確認
+        dataset_type = getattr(inference_data, "dataset_type", None)
+        logger.info(f"推論作成: dataset_name={dataset_name}, dataset_type={dataset_type}")
+        
         # プロバイダとモデル情報の取得
         provider_repo = get_provider_repository()
         model_repo = get_model_repository()
@@ -190,6 +194,31 @@ async def create_inference(
             top_p=inference_data.top_p or 1.0
         )
         
+        # データセットを取得
+        from app.utils.dataset.operations import get_dataset_by_name
+        dataset_info = None
+        
+        # データセットタイプが指定されている場合は取得を試みる
+        if dataset_type:
+            dataset_info = get_dataset_by_name(dataset_name, dataset_type)
+            logger.info(f"データセット取得（タイプ指定あり）: {dataset_name}, タイプ: {dataset_type}, 結果: {dataset_info is not None}")
+        
+        # タイプ指定が無いか取得に失敗した場合は、タイプなしで再試行
+        if not dataset_info:
+            dataset_info = get_dataset_by_name(dataset_name)
+            if dataset_info:
+                # 取得できた場合はそのタイプを記録
+                dataset_type = dataset_info["metadata"].type
+                logger.info(f"データセット取得（タイプ指定なし）: {dataset_name}, 検出タイプ: {dataset_type}")
+        
+        # それでも取得できない場合はエラー
+        if not dataset_info:
+            logger.error(f"データセットが見つかりません: {dataset_name}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"データセット '{dataset_name}' が見つかりません"
+            )
+        
         # 評価リクエストを構築
         evaluation_request = EvaluationRequest(
             datasets=[dataset_name],
@@ -209,7 +238,8 @@ async def create_inference(
             "temperature": inference_data.temperature or 0.7,
             "top_p": inference_data.top_p or 1.0,
             "num_samples": inference_data.num_samples or 100,
-            "n_shots": inference_data.n_shots or 0
+            "n_shots": inference_data.n_shots or 0,
+            "dataset_type": dataset_type  # データセットタイプを追加
         }
         
         # 推論を作成（初期状態はPENDING）
@@ -383,11 +413,15 @@ async def execute_inference_evaluation(
                         ds_name = ds_name.replace(shot_suffix, "")
                         break
                 
-                # メトリクス名は「データセット名_nshot_指標名」の形式
-                metric_name = f"{ds_name}_{n_shots_value}shot_{key}"
-                
-                # シンプルに1つのメトリクス名を使用
-                flat_metrics[metric_name] = value
+                # シンプルな解決 - 既に正規化されているメトリクスを使用
+                # キーにショット情報が含まれているかチェック
+                if any('shot' in part for part in key.split('_')):
+                    # 既にショット情報が含まれている場合はそのまま使用
+                    flat_metrics[key] = value
+                else:
+                    # ショット情報がない場合は追加
+                    normalized_key = f"{ds_name}_{n_shots_value}shot_{key}"
+                    flat_metrics[normalized_key] = value
                 
                 # n_shots_value をメトリクス辞書に保存（MLflowログ用）
                 flat_metrics["n_shots_value"] = n_shots_value
@@ -770,6 +804,37 @@ async def run_inference(
         
         # データセット名を抽出
         dataset_name = inference_db["dataset_id"].split('/')[-1].replace('.json', '')
+        
+        # データセットタイプを取得（パラメータに保存されていれば使用）
+        dataset_type = None
+        if inference_db.get("parameters") and "dataset_type" in inference_db["parameters"]:
+            dataset_type = inference_db["parameters"]["dataset_type"]
+            logger.info(f"パラメータからデータセットタイプを取得: {dataset_type}")
+        
+        # データセットを取得
+        from app.utils.dataset.operations import get_dataset_by_name
+        dataset_info = None
+        
+        # データセットタイプが指定されている場合は取得を試みる
+        if dataset_type:
+            dataset_info = get_dataset_by_name(dataset_name, dataset_type)
+            logger.info(f"データセット取得（タイプ指定あり）: {dataset_name}, タイプ: {dataset_type}, 結果: {dataset_info is not None}")
+        
+        # タイプ指定が無いか取得に失敗した場合は、タイプなしで再試行
+        if not dataset_info:
+            dataset_info = get_dataset_by_name(dataset_name)
+            if dataset_info:
+                # 取得できた場合はそのタイプを記録
+                dataset_type = dataset_info["metadata"].type
+                logger.info(f"データセット取得（タイプ指定なし）: {dataset_name}, 検出タイプ: {dataset_type}")
+        
+        # それでも取得できない場合はエラー
+        if not dataset_info:
+            logger.error(f"データセットが見つかりません: {dataset_name}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"データセット '{dataset_name}' が見つかりません"
+            )
         
         # モデル設定を構築
         model_config = ModelConfig(

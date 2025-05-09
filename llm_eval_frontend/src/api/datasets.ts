@@ -12,9 +12,10 @@ export const datasetsApi = {
     return response.datasets || [];
   },
 
-  // 特定のデータセットの取得（名前ベース）
-  getDatasetByName: async (name: string): Promise<Dataset> => {
-    const response = await apiClient.get(`/api/v1/datasets/${name}`);
+  // 特定のデータセットの取得（名前とタイプベース）
+  getDatasetByName: async (name: string, type?: string): Promise<Dataset> => {
+    const params = type ? { type } : undefined;
+    const response = await apiClient.get(`/api/v1/datasets/${name}`, { params });
     return {
       ...response.metadata,
       items: response.items || [],

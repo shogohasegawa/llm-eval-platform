@@ -20,8 +20,10 @@ from app.utils.db.database import get_db
 logger = logging.getLogger(__name__)
 
 # Ollamaサービスの接続先をカスタマイズするための環境変数を追加
-# 環境変数OLLAMA_BASE_URLがあればそれを使用、なければDockerネットワーク内のollamaサービスを使用
-OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://ollama:11434")
+# プロキシ設計: APIサーバー経由でアクセス（外部からのアクセスはプロキシを経由）
+OLLAMA_INTERNAL_URL = os.environ.get("OLLAMA_BASE_URL") # コンテナ間通信用
+OLLAMA_EXTERNAL_URL = os.environ.get("OLLAMA_EXTERNAL_URL") # 外部からのアクセス用
+OLLAMA_BASE_URL = OLLAMA_INTERNAL_URL # 後方互換性のために維持
 
 
 class DownloadStatus(str, Enum):
@@ -313,13 +315,33 @@ class OllamaManager:
             # 正しいAPIエンドポイントを構築
             api_url = f"{base_url}api/pull"
             
-            logger.info(f"Ollamaモデルのダウンロードを開始: {download.model_name}, API URL: {api_url}")
+            # 詳細ログ - ダウンロード開始情報
+            logger.info(f"[OLLAMA_DEBUG] ダウンロード開始: ID={download.id}, モデル={download.model_name}")
+            logger.info(f"[OLLAMA_DEBUG] URL={api_url}, エンドポイント={download.endpoint}")
+            logger.info(f"[OLLAMA_DEBUG] 現在のステータス={download.status}, 進捗={download.progress}%")
             
-            async with aiohttp.ClientSession() as session:
+            # ClientSessionのロギング設定
+            trace_config = aiohttp.TraceConfig()
+            
+            async def on_request_start(session, trace_config_ctx, params):
+                logger.info(f"[OLLAMA_HTTP] リクエスト開始: {params.method} {params.url}")
+            
+            async def on_request_end(session, trace_config_ctx, params):
+                logger.info(f"[OLLAMA_HTTP] リクエスト完了: {params.method} {params.url}, ステータス={params.response.status}")
+            
+            trace_config.on_request_start.append(on_request_start)
+            trace_config.on_request_end.append(on_request_end)
+            
+            # タイムアウト設定
+            timeout = aiohttp.ClientTimeout(total=1800)  # 30分
+            
+            async with aiohttp.ClientSession(trace_configs=[trace_config], timeout=timeout) as session:
                 payload = {
                     "model": download.model_name,
                     "stream": True
                 }
+                
+                logger.info(f"[OLLAMA_DEBUG] リクエストペイロード: {payload}")
                 
                 async with session.post(api_url, json=payload) as response:
                     if response.status != 200:
@@ -344,13 +366,36 @@ class OllamaManager:
                         
                         # JSONパース
                         try:
+                            # 受信したライン内容をロギング
+                            if len(line) < 500:  # 大きすぎる場合は省略
+                                logger.info(f"[OLLAMA_STREAM] 受信データ: {line.decode('utf-8', errors='replace')}")
+                            else:
+                                logger.info(f"[OLLAMA_STREAM] 受信データ: {line[:500].decode('utf-8', errors='replace')}... (省略)")
+                            
                             data = json.loads(line)
+                            
+                            # エラーチェックを最初に行う
+                            if 'error' in data:
+                                error_msg = data.get('error')
+                                logger.error(f"[OLLAMA_ERROR] エラー検出: {error_msg}")
+                                download.error = error_msg
+                                download.status = DownloadStatus.FAILED
+                                download.updated_at = datetime.now()
+                                
+                                # エラー発生時は即座にDBに保存
+                                self._save_download(download)
+                                # エラーが見つかった場合はループを抜ける
+                                break
+                            
                             # ステータスを更新
                             status = data.get("status")
                             status_changed = False
                             
+                            # 詳細な進捗情報のログ出力
+                            logger.info(f"[OLLAMA_PROGRESS] ステータス: {status}, データ: {data}")
+                            
                             if status == "pulling manifest":
-                                logger.info(f"マニフェスト取得中: {download.model_name}")
+                                logger.info(f"[OLLAMA_STATE] マニフェスト取得中: {download.model_name}, モデルID: {download.id}")
                                 status_changed = True
                             
                             elif status == "downloading":
@@ -363,25 +408,29 @@ class OllamaManager:
                                 if download.total_size > 0:
                                     download.progress = int((download.downloaded_size / download.total_size) * 100)
                                 
+                                # 進捗情報のロギング
+                                logger.info(f"[OLLAMA_DOWNLOAD] 進捗: {download.progress}%, サイズ: {download.downloaded_size}/{download.total_size} bytes, ダイジェスト: {download.digest}")
+                                
                                 # 進捗が変わった場合のみDBを更新 (5秒に1回まで)
                                 current_time = time.time()
                                 if (old_progress != download.progress and current_time - last_db_update > 5) or download.progress % 10 == 0:
                                     self._save_download(download)
                                     last_db_update = current_time
                                     status_changed = True
+                                    logger.info(f"[OLLAMA_DB] ダウンロード進捗をDBに保存: {download.progress}%")
                                 
                                 logger.debug(f"ダウンロード進捗: {download.model_name}, {download.progress}%, {download.downloaded_size}/{download.total_size}")
                             
                             elif status == "verifying sha256 digest":
-                                logger.info(f"SHA256ダイジェスト検証中: {download.model_name}")
+                                logger.info(f"[OLLAMA_STATE] SHA256ダイジェスト検証中: {download.model_name}, モデルID: {download.id}")
                                 status_changed = True
                             
                             elif status == "writing manifest":
-                                logger.info(f"マニフェスト書き込み中: {download.model_name}")
+                                logger.info(f"[OLLAMA_STATE] マニフェスト書き込み中: {download.model_name}, モデルID: {download.id}")
                                 status_changed = True
                             
                             elif status == "removing any unused layers":
-                                logger.info(f"未使用レイヤー削除中: {download.model_name}")
+                                logger.info(f"[OLLAMA_STATE] 未使用レイヤー削除中: {download.model_name}, モデルID: {download.id}")
                                 status_changed = True
                             
                             elif status == "success":
@@ -389,7 +438,7 @@ class OllamaManager:
                                 download.status = DownloadStatus.COMPLETED
                                 download.progress = 100
                                 download.completed_at = datetime.now()
-                                logger.info(f"ダウンロード完了: {download.model_name}")
+                                logger.info(f"[OLLAMA_SUCCESS] ダウンロード完了: {download.model_name}, モデルID: {download.id}")
                                 status_changed = True
                                 
                                 # モデルの実際のサイズを取得するため、tags APIを呼び出す
@@ -430,14 +479,55 @@ class OllamaManager:
                         except Exception as e:
                             logger.error(f"ダウンロード処理中のエラー: {e}")
             
-            if download.status != DownloadStatus.COMPLETED:
-                # 何らかの理由でダウンロードが完了しなかった場合
+            # ダウンロード状態の詳細を記録
+            logger.info(f"[OLLAMA_FINISH] ダウンロード処理終了ステータス: {download.status}, プログレス: {download.progress}%, エラー: {download.error}")
+            
+            # モデル名とIDを明示
+            model_info = f"モデル: {download.model_name}, ID: {download.id}"
+            
+            # エラーが既に設定されている場合は失敗として扱う
+            if download.error:
+                logger.error(f"[OLLAMA_FINISH] エラーが検出されたため失敗: {model_info}, エラー: {download.error}")
                 download.status = DownloadStatus.FAILED
-                download.error = "ダウンロードが正常に完了しませんでした"
                 download.updated_at = datetime.now()
-                logger.error(f"ダウンロード未完了: {download.model_name}")
+                self._save_download(download)
+                return
+            
+            # ダウンロードが既に成功と明示的にマークされている場合
+            if download.status == DownloadStatus.COMPLETED:
+                logger.info(f"[OLLAMA_FINISH] 明示的に成功完了マーク済み: {model_info}")
+                
+                # DB更新（最終ステータスを確実に保存）
+                download.updated_at = datetime.now()
+                self._save_download(download)
+            else:
+                # 明示的な成功メッセージを受け取らなかった場合の状態判定
+                logger.info(f"[OLLAMA_FINISH] 状態判定開始: HTTP状態={response.status}, エラー有無={bool(download.error)}")
+                
+                # 進捗のチェック - 0%のままならエラーの可能性あり
+                if download.progress == 0:
+                    logger.warning(f"[OLLAMA_WARNING] 進捗が0%のままでダウンロード終了: {model_info}")
+                    download.status = DownloadStatus.FAILED
+                    download.error = "ダウンロードが完了しませんでした（進捗0%）"
+                    download.updated_at = datetime.now()
+                    logger.error(f"[OLLAMA_ERROR] ダウンロード失敗: {model_info}, エラー: {download.error}")
+                # HTTP状態以外のエラーの確認
+                elif response.status != 200:
+                    # HTTP以外のエラーかレスポンスにエラーがある場合
+                    download.status = DownloadStatus.FAILED
+                    download.error = f"HTTP エラー: {response.status}"
+                    download.updated_at = datetime.now()
+                    logger.error(f"[OLLAMA_ERROR] ダウンロード失敗: {model_info}, エラー: {download.error}")
+                else:
+                    # 正常なHTTPレスポンスで、明示的なエラーがない場合は成功として処理
+                    download.status = DownloadStatus.COMPLETED
+                    download.progress = 100
+                    download.completed_at = datetime.now()
+                    download.updated_at = datetime.now()
+                    logger.info(f"[OLLAMA_SUCCESS] 暗黙的なダウンロード完了: {model_info}")
                 
                 # DB更新
+                logger.info(f"[OLLAMA_DB] 最終状態をDBに保存: status={download.status}, progress={download.progress}%, error={download.error}")
                 self._save_download(download)
         
         except Exception as e:
@@ -445,9 +535,14 @@ class OllamaManager:
             download.status = DownloadStatus.FAILED
             download.error = str(e)
             download.updated_at = datetime.now()
-            logger.error(f"ダウンロード処理中の例外: {e}", exc_info=True)
+            
+            # 例外の詳細を記録
+            logger.error(f"[OLLAMA_EXCEPTION] モデル: {download.model_name}, ID: {download.id}")
+            logger.error(f"[OLLAMA_EXCEPTION] エラー詳細: {str(e)}")
+            logger.error(f"[OLLAMA_EXCEPTION] スタックトレース:", exc_info=True)
             
             # DB更新
+            logger.info(f"[OLLAMA_DB] 例外発生後の状態をDBに保存: status={download.status}, error={download.error}")
             self._save_download(download)
     
     def get_download(self, download_id: str) -> Optional[Dict[str, Any]]:

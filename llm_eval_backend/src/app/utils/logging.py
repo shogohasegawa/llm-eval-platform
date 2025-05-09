@@ -178,46 +178,41 @@ async def log_evaluation_results(model_name: str, metrics: Dict[str, float]) -> 
                             if "n_shots_value" in formatted_metrics:
                                 formatted_metrics.pop("n_shots_value")
                             
-                            # メトリクス名をチェックし、形式が重複している場合は修正
+                            # MLflowメトリクスのシンプル処理 - 名前変更・重複処理は前段階で完了しているはず
                             cleaned_metrics = {}
                             for key, value in formatted_metrics.items():
-                                # 重複したn_shot情報をチェック（例: "aio_0shot_aio_0shot_char_f1"）
-                                shot_patterns = ["_0shot_", "_1shot_", "_2shot_", "_3shot_", "_4shot_", "_5shot_"]
+                                # n_shots_valueは特別処理
+                                if key == "n_shots_value":
+                                    cleaned_metrics[key] = value
+                                    continue
+                                    
+                                # ショット情報を含むメトリクスを処理
+                                parts = key.split("_")
+                                shot_index = -1
                                 
-                                if any(shot in key for shot in shot_patterns):
-                                    # 重複を検出しようと試みる
-                                    try:
-                                        # '_0shot_'などの最初の出現位置を見つける
-                                        match_positions = []
-                                        for pattern in shot_patterns:
-                                            pos = key.find(pattern)
-                                            if pos != -1:
-                                                match_positions.append((pos, pattern))
-                                        
-                                        if match_positions:
-                                            # 最初に出現するパターンを使用
-                                            first_pos, first_pattern = min(match_positions, key=lambda x: x[0])
-                                            
-                                            # 重複がある場合は正規化
-                                            if shot_patterns.count(first_pattern) > 1:
-                                                # データセット名を取得
-                                                dataset_name = key[:first_pos]
-                                                
-                                                # メトリクス名を取得（最後の部分）
-                                                metric_part = key.split("_")[-1]
-                                                
-                                                # 新しい正規化されたキー
-                                                normalized_key = f"{dataset_name}{first_pattern}{metric_part}"
-                                                
-                                                cleaned_metrics[normalized_key] = value
-                                                continue
-                                    except Exception:
-                                        pass
+                                # ショット情報の位置を探す
+                                for i, part in enumerate(parts):
+                                    if 'shot' in part:
+                                        shot_index = i
+                                        break
                                 
-                                # 問題がなければそのまま追加
-                                cleaned_metrics[key] = value
+                                if shot_index >= 0:
+                                    # データセット名とメトリクス名を取得
+                                    dataset_parts = parts[:shot_index]
+                                    shot_part = parts[shot_index]
+                                    metric_part = parts[-1]
+                                    
+                                    # データセット名
+                                    dataset_name = "_".join(dataset_parts) if dataset_parts else "dataset"
+                                    
+                                    # 正規化メトリクス名を構築
+                                    normalized_key = f"{dataset_name}_{shot_part}_{metric_part}"
+                                    cleaned_metrics[normalized_key] = value
+                                else:
+                                    # ショット情報がない場合はそのまま
+                                    cleaned_metrics[key] = value
                             
-                            # 元のメトリクスを置き換え
+                            # 処理済みメトリクスに置き換え
                             formatted_metrics = cleaned_metrics
                             
                             # すべてのメトリクスを同じn_shots値をステップとして記録

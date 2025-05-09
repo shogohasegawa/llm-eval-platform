@@ -41,8 +41,8 @@ class ApiClient {
       headers: {
         'Content-Type': 'application/json',
       },
-      // リクエストタイムアウト設定（.envから設定を読み込み、デフォルトは30秒）
-      timeout: import.meta.env.VITE_API_TIMEOUT ? parseInt(import.meta.env.VITE_API_TIMEOUT) : 30000,
+      // リクエストタイムアウト設定（.envから設定を読み込み）
+      timeout: parseInt(import.meta.env.VITE_API_TIMEOUT),
     });
 
     // リクエストインターセプター

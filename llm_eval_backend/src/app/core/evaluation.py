@@ -411,8 +411,8 @@ async def call_model_with_router(
             response_params["model"] = model
             logger.info(f"モデル名をモデル名のみに調整: {response_params['model']}")
         
-        # プロバイダを明示的に設定
-        response_params["provider"] = provider
+        # プロバイダは直接設定せず、モデル名に含める
+        # provider パラメータは LiteLLM API では受け付けられないため削除
         
         try:
             # 非同期で呼び出し
@@ -625,6 +625,9 @@ async def process_batch(batch: List[Dict], model_name: str, provider_name: str,
     Returns:
         処理結果のリスト
     """
+    # デバッグログ追加
+    logger.info(f"【デバッグ】process_batch: dataset_name='{dataset_name}', n_shots={n_shots}")
+    
     few_shots = await get_few_shot_samples(dataset_name, n_shots)
     results = []
 
@@ -687,14 +690,43 @@ async def run_evaluation(
         else:
             # パスが含まれているが拡張子がない場合
             dataset_path = Path(f"{dataset_name}.json")
-        base_name = dataset_name.split('/')[-1]
-        if base_name.endswith('.json'):
-            base_name = base_name[:-5]  # .jsonを削除
+        file_name = dataset_name.split('/')[-1]
+        if file_name.endswith('.json'):
+            file_name = file_name[:-5]  # .jsonを削除
+        base_name = file_name
     else:
         # データセット名のみの場合
-        base_name = dataset_name
+        file_name = dataset_name
+        base_name = file_name
         # 絶対パスで生成
-        dataset_path = settings.TEST_DATASETS_DIR / f"{base_name}.json"
+        dataset_path = settings.TEST_DATASETS_DIR / f"{file_name}.json"
+        
+    # 指標名で使用するデータセットの基本名を抽出（例：'aio_0shot' → 'aio'）
+    logger.info(f"【デバッグ】処理前の base_name: '{base_name}'")
+    
+    # シンプルな解決策: データセット名からshot情報を削除
+    if '_' in base_name:
+        parts = base_name.split('_')
+        # shotを含む部分をすべて削除
+        clean_parts = [part for part in parts if 'shot' not in part]
+        
+        if clean_parts:
+            # クリーンな部分からデータセット名を再構築
+            base_name = '_'.join(clean_parts)
+        else:
+            # すべての部分にshotが含まれている場合
+            first_part = parts[0]
+            if 'shot' in first_part:
+                base_name = first_part.split('shot')[0]
+            else:
+                base_name = first_part
+    
+    # データセット名が空になった場合のフォールバック
+    if not base_name:
+        base_name = "dataset"
+    
+    # 最終的な基本名を記録
+    logger.info(f"【デバッグ】最終的な base_name: '{base_name}'")
     
     logger.info(f"Looking for dataset at: {dataset_path}")
     batch_size = settings.BATCH_SIZE
@@ -771,39 +803,57 @@ async def run_evaluation(
                 ]
                 if scores:  # エラーを除いたスコアがある場合のみ平均を計算
                     avg_score = sum(scores) / len(scores)
-                    all_results[f"{dataset_name}_{shot}shot_{metric_name}"] = avg_score
+                    # シンプルな解決: メトリクス名を直接構築
+                    # base_name はshotパターンが削除された状態
+                    result_key = f"{base_name}_{shot}shot_{metric_name}"
+                    logger.info(f"【デバッグ】メトリクス保存キー: '{result_key}' → {avg_score}")
+                    all_results[result_key] = avg_score
                     
                     # パラメータ情報も記録（あれば）
                     if metric_name in metrics_parameters:
-                        all_results[f"{dataset_name}_{shot}shot_{metric_name}_parameters"] = metrics_parameters[metric_name]
+                        # シンプルな解決: パラメータキーを直接構築
+                        param_key = f"{base_name}_{shot}shot_{metric_name}_parameters"
+                        logger.info(f"【デバッグ】パラメータ保存キー: '{param_key}'")
+                        all_results[param_key] = metrics_parameters[metric_name]
                 else:
-                    all_results[f"{dataset_name}_{shot}shot_{metric_name}"] = 0
+                    # シンプルな解決: スコアなしメトリクス名を直接構築
+                    result_key = f"{base_name}_{shot}shot_{metric_name}"
+                    logger.info(f"【デバッグ】スコアなしメトリクス保存キー: '{result_key}'")
+                    all_results[result_key] = 0
             else:
                 logger.warning(f"Metric '{metric_name}' specified in dataset but not found in registry")
 
-        all_results[f"{dataset_name}_{shot}shot_details"] = shot_results
+        # シンプルな解決: 詳細キーを直接構築
+        details_key = f"{base_name}_{shot}shot_details"
+        logger.info(f"【デバッグ】詳細キー: '{details_key}'")
+        all_results[details_key] = shot_results
 
+    # サマリー生成 - シンプルな解決
     summary = []
     for shot in n_shots:
+        # 基本情報
         row = {
-            "dataset": dataset_name,
+            "dataset": base_name,
             "model": f"{provider_name}/{model_name}",
             "n_shots": shot,
             "num_samples": len(samples)
         }
-        # all_results のキーから実際に測定された指標だけ追加
-        prefix = f"{dataset_name}_{shot}shot_"
+        
+        # メトリクス抽出
+        prefix = f"{base_name}_{shot}shot_"
         for key, value in all_results.items():
-            if key.startswith(prefix) and not key.endswith("_details"):
+            if key.startswith(prefix) and not key.endswith("_details") and not key.endswith("_parameters"):
                 metric_name = key[len(prefix):]
                 row[metric_name] = value
+        
         summary.append(row)
 
     return {
         "summary": summary,       # DataFrame ではなく List[Dict]
         "details": all_results,
         "metadata": {
-            "dataset": dataset_name,
+            "dataset": base_name,  # メタデータでもbase_nameを使用
+            "raw_dataset_name": dataset_name,  # 元のデータセット名も保持
             "model": f"{provider_name}/{model_name}",
             "num_samples": num_samples,
             "n_shots": n_shots,
@@ -844,12 +894,14 @@ async def run_multiple_evaluations(
         init_router_from_db()
 
     for dataset_name in datasets:
+        logger.info(f"【デバッグ】run_multiple_evaluations: 評価開始 - dataset_name='{dataset_name}'")
         dataset_results = await run_evaluation(
             dataset_name, provider_name, model_name, num_samples, n_shots, additional_params
         )
         results[dataset_name] = dataset_results
         # 辞書リストをそのままマージ
         all_summary.extend(dataset_results["summary"])
+        logger.info(f"【デバッグ】run_multiple_evaluations: 評価完了 - dataset_name='{dataset_name}', base_name={dataset_results['metadata']['dataset']}")
 
     return {
         "results": results,
@@ -857,7 +909,8 @@ async def run_multiple_evaluations(
         "metadata": {
             "provider_name": provider_name,
             "model_name": model_name,
-            "datasets": datasets,
+            "datasets": datasets,  # 元のデータセット名リストを保持
+            "cleaned_datasets": [r["metadata"]["dataset"] for r in results.values()],  # クリーンにしたデータセット名
             "num_samples": num_samples,
             "n_shots": n_shots,
             "timestamp": timestamp,

@@ -5,6 +5,29 @@
 import { apiClient } from './client';
 import { OllamaModelDownload } from '../types/ollama';
 
+// 直接Ollamaサーバーにアクセスする場合は、proxy-ollama.tsを使用してください
+
+// 共通のマッピング関数
+const mapDownloadItem = (item: any): OllamaModelDownload => ({
+  id: item.id,
+  modelId: item.model_id,
+  modelName: item.model_name,
+  status: item.status,
+  progress: item.progress || 0,
+  totalSize: item.total_size || 0,
+  downloadedSize: item.downloaded_size || 0,
+  modelSize: item.model_size || 0,
+  modelSizeGb: item.model_size_gb || 0.0,
+  error: item.error,
+  endpoint: item.endpoint || '',
+  createdAt: item.created_at,
+  updatedAt: item.updated_at,
+  completedAt: item.completed_at,
+  digest: item.digest,
+  modelInfo: item.model_info
+});
+
+// バックエンドAPI経由でOllamaの操作を行う関数群
 export const ollamaApi = {
   /**
    * Ollamaモデルのダウンロードを開始
@@ -99,34 +122,14 @@ export const ollamaApi = {
       
       console.log('Ollama model downloads response:', response);
       
-      // 共通のマッピング関数
-      const mapItem = (item: any): OllamaModelDownload => ({
-        id: item.id,
-        modelId: item.model_id,
-        modelName: item.model_name,
-        status: item.status,
-        progress: item.progress || 0,
-        totalSize: item.total_size || 0,
-        downloadedSize: item.downloaded_size || 0,
-        modelSize: item.model_size || 0,
-        modelSizeGb: item.model_size_gb || 0.0,
-        error: item.error,
-        endpoint: item.endpoint || '',
-        createdAt: item.created_at,
-        updatedAt: item.updated_at,
-        completedAt: item.completed_at,
-        digest: item.digest,
-        modelInfo: item.model_info
-      });
-      
       // レスポンスが配列形式の場合
       if (Array.isArray(response)) {
-        return response.map(mapItem);
+        return response.map(mapDownloadItem);
       }
       
       // レスポンスがオブジェクトでdownloadsプロパティがある場合
       if (response && typeof response === 'object' && 'downloads' in response && Array.isArray(response.downloads)) {
-        return response.downloads.map(mapItem);
+        return response.downloads.map(mapDownloadItem);
       }
       
       return [];
@@ -177,34 +180,14 @@ export const ollamaApi = {
       
       console.log('Ollama all downloads response:', response);
       
-      // 共通のマッピング関数
-      const mapItem = (item: any): OllamaModelDownload => ({
-        id: item.id,
-        modelId: item.model_id,
-        modelName: item.model_name,
-        status: item.status,
-        progress: item.progress || 0,
-        totalSize: item.total_size || 0,
-        downloadedSize: item.downloaded_size || 0,
-        modelSize: item.model_size || 0,
-        modelSizeGb: item.model_size_gb || 0.0,
-        error: item.error,
-        endpoint: item.endpoint || '',
-        createdAt: item.created_at,
-        updatedAt: item.updated_at,
-        completedAt: item.completed_at,
-        digest: item.digest,
-        modelInfo: item.model_info
-      });
-      
       // レスポンスが配列形式の場合
       if (Array.isArray(response)) {
-        return response.map(mapItem);
+        return response.map(mapDownloadItem);
       }
       
       // レスポンスがオブジェクトでdownloadsプロパティがある場合
       if (response && typeof response === 'object' && 'downloads' in response && Array.isArray(response.downloads)) {
-        return response.downloads.map(mapItem);
+        return response.downloads.map(mapDownloadItem);
       }
       
       return [];

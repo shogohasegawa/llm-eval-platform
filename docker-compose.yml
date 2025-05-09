@@ -1,7 +1,7 @@
 version: '3.8'
 
 # 単一サーバー用設定ファイル - すべてのサービスを1台のマシンで実行
-# 使用方法: docker-compose -f docker-compose.full.yml up -d
+# 使用方法: docker-compose up -d
 
 services:
   api:
@@ -9,23 +9,23 @@ services:
       context: ./llm_eval_backend
       dockerfile: Dockerfile
     env_file:
-      - ./llm_eval_backend/.env
+      - ./.env  # ルート直下の統合された環境変数ファイルを使用
     ports:
-      - "8001:8000"
+      - "${API_PORT}:8000"
     volumes:
       - ./llm_eval_backend/src:/app/src
       - ./llm_eval_backend/results:/app/results
       - ./datasets:/external_datasets
       - ./external_data:/external_data
     environment:
-      - LLMEVAL_ENV=${LLMEVAL_ENV:-development}
-      - LLMEVAL_LOG_LEVEL=${LLMEVAL_LOG_LEVEL:-INFO}
-      - MLFLOW_TRACKING_URI=${MLFLOW_HOST_URI:-http://mlflow:5000}
-      - MLFLOW_HOST=${MLFLOW_HOST:-mlflow}
-      - MLFLOW_PORT=${MLFLOW_PORT:-5000}
-      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
-      - LLMEVAL_DB_PATH=/external_data/llm_eval.db
-      - TZ=${TZ:-Asia/Tokyo}
+      - LLMEVAL_ENV=${LLMEVAL_ENV}
+      - LLMEVAL_LOG_LEVEL=${LLMEVAL_LOG_LEVEL}
+      - MLFLOW_TRACKING_URI=${MLFLOW_HOST_URI}
+      - MLFLOW_HOST=${MLFLOW_HOST}
+      - MLFLOW_PORT=${MLFLOW_PORT}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL}
+      - LLMEVAL_DB_PATH=${LLMEVAL_DB_PATH}
+      - TZ=${TZ}
     depends_on:
       - mlflow
       - ollama
@@ -36,7 +36,7 @@ services:
   mlflow:
     image: ghcr.io/mlflow/mlflow:latest
     ports:
-      - "5000:5000"
+      - "${MLFLOW_EXTERNAL_PORT}:5000"
     volumes:
       - ./llm_eval_backend/mlflow:/mlflow
     environment:
@@ -54,16 +54,15 @@ services:
 
   ollama:
     image: ollama/ollama:latest
-    container_name: ollama
     ports:
-      - "11434:11434"
+      - "${OLLAMA_PORT}:11434"
     volumes:
       - ollama_data:/root/.ollama
     restart: unless-stopped
     environment:
-      - OLLAMA_HOST=${OLLAMA_HOST:-0.0.0.0}
-      - OLLAMA_ORIGINS=*
-      - OLLAMA_MODELS_PATH=${OLLAMA_MODELS_PATH:-/root/.ollama}
+      - OLLAMA_HOST=${OLLAMA_HOST}
+      - OLLAMA_ORIGINS=${OLLAMA_ORIGINS}
+      - OLLAMA_MODELS_PATH=${OLLAMA_MODELS_PATH}
       - NVIDIA_VISIBLE_DEVICES=all
     # Docker Composeバージョンに合わせたGPU設定
     runtime: nvidia
@@ -74,11 +73,20 @@ services:
     build:
       context: ./llm_eval_frontend
       dockerfile: Dockerfile
+    env_file:
+      - ./.env  # ルート直下の統合された環境変数ファイルを使用
     ports:
-      - "4173:3000"
+      - "${FRONTEND_PORT}:3000"
     environment:
-      - VITE_API_BASE_URL=${API_BASE_URL:-}
-      - VITE_OLLAMA_BASE_URL=${VITE_OLLAMA_BASE_URL:-}
+      # フロントエンド用環境変数
+      - VITE_API_BASE_URL=${VITE_API_BASE_URL}
+      - VITE_OLLAMA_BASE_URL=${VITE_OLLAMA_BASE_URL}
+      - VITE_MLFLOW_BASE_URL=${VITE_MLFLOW_BASE_URL}
+      - VITE_API_TIMEOUT=${VITE_API_TIMEOUT}
+      - VITE_DEBUG_MODE=${VITE_DEBUG_MODE}
+      - VITE_APP_NAME=${VITE_APP_NAME}
+      - VITE_APP_VERSION=${VITE_APP_VERSION}
+      - VITE_LOG_LEVEL=${VITE_LOG_LEVEL}
     depends_on:
       - api
     networks:

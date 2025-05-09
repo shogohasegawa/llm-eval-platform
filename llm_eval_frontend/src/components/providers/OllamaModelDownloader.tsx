@@ -89,16 +89,30 @@ const OllamaModelDownloader: React.FC<OllamaModelDownloaderProps> = ({
     const interval = setInterval(async () => {
       try {
         const status = await ollamaApi.getDownloadStatus(downloadId);
+        
+        // ステータスログ出力（デバッグ用）
+        console.log('ダウンロードステータス更新:', {
+          id: status.id,
+          model: status.modelName,
+          status: status.status,
+          progress: status.progress,
+          error: status.error
+        });
+        
         setCurrentDownload(status);
         
+        // エラーがある場合は失敗ステータスとして扱う
+        const isCompleted = status.status === OllamaDownloadStatus.COMPLETED;
+        const isFailed = status.status === OllamaDownloadStatus.FAILED || !!status.error;
+        
         // ダウンロードが完了または失敗した場合
-        if (status.status === OllamaDownloadStatus.COMPLETED || 
-            status.status === OllamaDownloadStatus.FAILED) {
+        if (isCompleted || isFailed) {
+          console.log('ダウンロード終了:', isCompleted ? '成功' : '失敗', status);
           clearInterval(interval);
           setRefreshInterval(null);
           
-          // ダウンロード完了時のコールバック
-          if (status.status === OllamaDownloadStatus.COMPLETED && onDownloadComplete) {
+          // ダウンロード完了時のコールバック (エラーがなく実際に完了した場合のみ)
+          if (isCompleted && !status.error && onDownloadComplete) {
             onDownloadComplete();
           }
           
@@ -200,8 +214,35 @@ const OllamaModelDownloader: React.FC<OllamaModelDownloaderProps> = ({
       
       return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     };
+    
+    // ステータスのサニティチェック - ステータスが文字列でない場合の対応
+    const status = typeof currentDownload.status === 'string' 
+      ? currentDownload.status 
+      : String(currentDownload.status);
+    
+    // エラーがある場合は、ステータスに関わらずエラー表示を優先
+    if (currentDownload.error) {
+      return (
+        <Box>
+          <Alert severity="error" icon={<ErrorIcon />}>
+            ダウンロードに失敗しました
+          </Alert>
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="body2" color="error">
+              エラー: {currentDownload.error || '不明なエラー'}
+            </Typography>
+            <Typography variant="body2">
+              モデル名: {currentDownload.modelName}
+            </Typography>
+            <Typography variant="body2">
+              失敗日時: {new Date(currentDownload.updatedAt).toLocaleString()}
+            </Typography>
+          </Box>
+        </Box>
+      );
+    }
 
-    switch (currentDownload.status) {
+    switch (status) {
       case OllamaDownloadStatus.PENDING:
         return (
           <Box>
@@ -222,9 +263,14 @@ const OllamaModelDownloader: React.FC<OllamaModelDownloaderProps> = ({
             <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <CircularProgress size={24} sx={{ mr: 1 }} />
               <Typography variant="body2">
-                モデルをダウンロード中
+                モデルをダウンロード中 {currentDownload.progress ? `(${currentDownload.progress}%)` : ''}
               </Typography>
             </Box>
+            {currentDownload.totalSize > 0 && (
+              <Typography variant="body2" align="center" sx={{ mt: 1 }}>
+                {formatSize(currentDownload.downloadedSize)} / {formatSize(currentDownload.totalSize)}
+              </Typography>
+            )}
           </Box>
         );
         
@@ -248,7 +294,7 @@ const OllamaModelDownloader: React.FC<OllamaModelDownloaderProps> = ({
                 </Typography>
               )}
               <Typography variant="body2">
-                完了日時: {new Date(currentDownload.completedAt || '').toLocaleString()}
+                完了日時: {new Date(currentDownload.completedAt || currentDownload.updatedAt || '').toLocaleString()}
               </Typography>
             </Box>
           </Box>
@@ -275,7 +321,22 @@ const OllamaModelDownloader: React.FC<OllamaModelDownloaderProps> = ({
         );
         
       default:
-        return null;
+        // 不明なステータスの場合
+        return (
+          <Box>
+            <Alert severity="warning">
+              ステータスが不明です: {status}
+            </Alert>
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="body2">
+                モデル名: {currentDownload.modelName}
+              </Typography>
+              <Typography variant="body2">
+                最終更新: {new Date(currentDownload.updatedAt).toLocaleString()}
+              </Typography>
+            </Box>
+          </Box>
+        );
     }
   };
 
