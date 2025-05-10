@@ -43,7 +43,7 @@ RUN uv python pin 3.12
 # ライブラリのインストール
 COPY pyproject.toml uv.lock ./
 COPY README.md ./README.md
-RUN uv sync --frozen
+RUN uv sync
 
 # アプリケーションのソースコードをコピー
 COPY src ./src

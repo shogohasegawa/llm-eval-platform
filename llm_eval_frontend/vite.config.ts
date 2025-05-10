@@ -9,9 +9,9 @@ export default defineConfig({
     proxy: {
       '/api': {
         // APIサーバーのアドレスを設定
-        // Docker Compose内では 'api' コンテナへの接続が可能
+        // Docker Compose内では 'llm-api-backend' コンテナへの接続が可能
         // 複数環境対応：環境変数 -> Docker コンテナ名 -> ローカルホスト の順で優先
-        target: process.env.VITE_API_BASE_URL || 'http://api:8000',
+        target: process.env.VITE_API_BASE_URL || `http://${process.env.VITE_API_HOST || 'llm-api-backend'}:${process.env.VITE_API_PORT || '8000'}`,
         changeOrigin: true,
         secure: false,
         rewrite: (path) => path,
@@ -31,7 +31,7 @@ export default defineConfig({
       },
       // MLflowプロキシアクセス用の設定を追加
       '/proxy-mlflow': {
-        target: process.env.VITE_API_BASE_URL || 'http://api:8000',
+        target: process.env.VITE_API_BASE_URL || `http://${process.env.VITE_API_HOST || 'llm-api-backend'}:${process.env.VITE_API_PORT || '8000'}`,
         changeOrigin: true,
         secure: false,
         rewrite: (path) => path,
@@ -47,6 +47,13 @@ export default defineConfig({
             console.log('MLflow Proxy Response:', req.method, req.url, '←', proxyRes.statusCode);
           });
         },
+      },
+      // MLflow UIページへのプロキシ設定
+      '/mlflow-ui': {
+        target: process.env.VITE_API_BASE_URL || `http://${process.env.VITE_API_HOST || 'llm-api-backend'}:${process.env.VITE_API_PORT || '8000'}`,
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path,
       },
     },
     watch: {

@@ -10,9 +10,13 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const port = process.env.PORT || 3000;
 
-// API Proxy設定 (ターゲットを固定で設定)
+// API Proxy設定 (環境変数から設定を取得、またはデフォルト値を使用)
+const API_HOST = process.env.VITE_API_HOST || 'llm-api-backend';
+const API_PORT = process.env.VITE_API_PORT || '8000';
+const API_URL = process.env.VITE_API_BASE_URL || `http://${API_HOST}:${API_PORT}`;
+
 const apiProxy = createProxyMiddleware('/api', {
-  target: 'http://api:8000',
+  target: API_URL,
   changeOrigin: true,
   secure: false,
   logLevel: 'debug',
@@ -47,6 +51,6 @@ app.get('*', (req, res) => {
 app.listen(port, () => {
   console.log(`==== LLM Evaluation Platform Frontend ====`);
   console.log(`Server running on port ${port}`);
-  console.log(`API proxy target: http://api:8000`);
+  console.log(`API proxy target: ${API_URL}`);
   console.log(`=====================================`);
 });

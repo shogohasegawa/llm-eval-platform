@@ -287,7 +287,12 @@ async def check_ollama_model(model_name: str, endpoint: Optional[str] = None):
                 
                 # モデルが存在するか確認
                 for model in data.get("models", []):
-                    if model.get("name") == model_name:
+                    model_name_in_list = model.get("name", "")
+                    # 完全一致 または 前方一致（モデル名:タグ）のパターンをチェック
+                    if (model_name_in_list == model_name or
+                        model_name_in_list.startswith(f"{model_name}:") or
+                        model_name.startswith(f"{model_name_in_list}:")):
+                        logger.info(f"モデル一致: 検索={model_name}, 見つかった={model_name_in_list}")
                         return {
                             "exists": True,
                             "model_info": model

@@ -1,17 +1,14 @@
 import React, { useState } from 'react';
-import { 
-  Box, 
-  Typography, 
-  Button, 
-  Grid, 
-  Paper, 
+import {
+  Box,
+  Typography,
+  Button,
+  Grid,
+  Paper,
   CircularProgress,
   Alert,
-  Divider,
-  Tabs,
-  Tab
+  Divider
 } from '@mui/material';
-import AddIcon from '@mui/icons-material/Add';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useProvider, useProviderModels, useCreateModel, useUpdateModel, useDeleteModel } from '../hooks/useProviders';
 import { Model, ModelFormData } from '../types/provider';
@@ -29,9 +26,6 @@ const ProviderDetail: React.FC = () => {
   
   // コンテキストから状態を取得
   const { setError } = useAppContext();
-  
-  // タブの状態
-  const [tabValue, setTabValue] = useState(0);
   
   // ダイアログの状態
   const [formDialogOpen, setFormDialogOpen] = useState(false);
@@ -66,9 +60,9 @@ const ProviderDetail: React.FC = () => {
     setError(`モデルの取得に失敗しました: ${modelsError.message}`);
   }
   
-  // タブの変更ハンドラ
-  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
-    setTabValue(newValue);
+  // モデル一覧に移動するハンドラ
+  const handleGoToModels = () => {
+    navigate(`/models?providerId=${providerId}`);
   };
   
   // モデルの追加/編集ダイアログを開く
@@ -167,79 +161,49 @@ const ProviderDetail: React.FC = () => {
           </Typography>
         </Box>
         <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => handleOpenFormDialog()}
+          variant="outlined"
+          onClick={handleGoToModels}
         >
-          モデルを追加
+          モデル一覧を表示
         </Button>
       </Box>
       
       <Divider sx={{ mb: 3 }} />
-      
-      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
-        <Tabs value={tabValue} onChange={handleTabChange} aria-label="provider tabs">
-          <Tab label="モデル" id="tab-0" />
-          <Tab label="設定" id="tab-1" />
-        </Tabs>
+
+      {/* 関連モデル情報 */}
+      <Box mb={3}>
+        <Typography variant="subtitle1" gutterBottom>
+          このプロバイダに関連するモデルは「モデル一覧」で確認・管理できます。
+        </Typography>
+        <Button
+          variant="outlined"
+          onClick={handleGoToModels}
+          sx={{ mt: 1 }}
+        >
+          モデル一覧を表示
+        </Button>
       </Box>
-      
-      {/* モデルタブ */}
-      {tabValue === 0 && (
-        <>
-          {isLoadingModels ? (
-            <Box display="flex" justifyContent="center" my={4}>
-              <CircularProgress />
-            </Box>
-          ) : isErrorModels ? (
-            <Alert severity="error" sx={{ mb: 3 }}>
-              モデルの取得中にエラーが発生しました。
-            </Alert>
-          ) : models && models.length > 0 ? (
-            <Grid container spacing={2}>
-              {models.map((model) => (
-                <Grid item xs={12} sm={6} md={4} key={model.id}>
-                  <ModelCard
-                    model={model}
-                    onSelect={handleSelectModel}
-                    onEdit={handleOpenFormDialog}
-                    onDelete={handleDeleteModel}
-                  />
-                </Grid>
-              ))}
-            </Grid>
-          ) : (
-            <Paper sx={{ p: 3, textAlign: 'center' }}>
-              <Typography variant="body1" color="text.secondary">
-                モデルが登録されていません。「モデルを追加」ボタンをクリックして最初のモデルを登録してください。
-              </Typography>
-            </Paper>
-          )}
-        </>
-      )}
-      
-      {/* 設定タブ */}
-      {tabValue === 1 && (
-        <Paper sx={{ p: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            プロバイダ設定
-          </Typography>
-          <Grid container spacing={2}>
-            <Grid item xs={12} sm={6}>
-              <Typography variant="subtitle2">エンドポイント</Typography>
-              <Typography variant="body1">{provider.endpoint || '設定なし'}</Typography>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <Typography variant="subtitle2">APIキー</Typography>
-              <Typography variant="body1">{provider.apiKey ? '********' : '設定なし'}</Typography>
-            </Grid>
-            <Grid item xs={12}>
-              <Typography variant="subtitle2">ステータス</Typography>
-              <Typography variant="body1">{provider.isActive ? 'アクティブ' : '非アクティブ'}</Typography>
-            </Grid>
+
+      {/* プロバイダ設定 */}
+      <Paper sx={{ p: 3 }}>
+        <Typography variant="h6" gutterBottom>
+          プロバイダ設定
+        </Typography>
+        <Grid container spacing={2}>
+          <Grid item xs={12} sm={6}>
+            <Typography variant="subtitle2">エンドポイント</Typography>
+            <Typography variant="body1">{provider.endpoint || '設定なし'}</Typography>
           </Grid>
-        </Paper>
-      )}
+          <Grid item xs={12} sm={6}>
+            <Typography variant="subtitle2">APIキー</Typography>
+            <Typography variant="body1">{provider.apiKey ? '********' : '設定なし'}</Typography>
+          </Grid>
+          <Grid item xs={12}>
+            <Typography variant="subtitle2">ステータス</Typography>
+            <Typography variant="body1">{provider.isActive ? 'アクティブ' : '非アクティブ'}</Typography>
+          </Grid>
+        </Grid>
+      </Paper>
       
       
       {/* モデル追加/編集ダイアログ */}

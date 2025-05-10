@@ -25,6 +25,10 @@ OLLAMA_INTERNAL_URL = os.environ.get("OLLAMA_BASE_URL") # コンテナ間通信�
 OLLAMA_EXTERNAL_URL = os.environ.get("OLLAMA_EXTERNAL_URL") # 外部からのアクセス用
 OLLAMA_BASE_URL = OLLAMA_INTERNAL_URL # 後方互換性のために維持
 
+# デバッグログ出力
+logger.info(f"Ollama接続情報: OLLAMA_INTERNAL_URL={OLLAMA_INTERNAL_URL}, OLLAMA_EXTERNAL_URL={OLLAMA_EXTERNAL_URL}")
+logger.info(f"環境変数: OLLAMA_BASE_URL={os.environ.get('OLLAMA_BASE_URL')}")
+
 
 class DownloadStatus(str, Enum):
     """ダウンロードステータス列挙型"""
@@ -452,15 +456,48 @@ class OllamaManager:
                                         async with tags_session.get(tags_url) as tags_response:
                                             if tags_response.status == 200:
                                                 tags_data = await tags_response.json()
+                                                logger.info(f"[OLLAMA_SIZE_DEBUG] タグレスポンス全体: {json.dumps(tags_data)}")
+
+                                                # モデル情報を確認
+                                                found_model = False
                                                 for model_info in tags_data.get("models", []):
-                                                    if model_info.get("name") == download.model_name:
+                                                    logger.info(f"[OLLAMA_SIZE_DEBUG] モデル情報: {json.dumps(model_info)}")
+                                                    model_name_in_list = model_info.get("name", "")
+
+                                                    # 完全一致 または 前方一致（モデル名:タグ）のパターンをチェック
+                                                    if (model_name_in_list == download.model_name or
+                                                        model_name_in_list.startswith(f"{download.model_name}:") or
+                                                        download.model_name.startswith(f"{model_name_in_list}:")):
+
+                                                        found_model = True
+                                                        # モデル情報の詳細ログ
+                                                        logger.info(f"[OLLAMA_SIZE_DEBUG] 一致モデル: 検索={download.model_name}, 見つかった={model_name_in_list}, 情報: {json.dumps(model_info)}")
+                                                        logger.info(f"[OLLAMA_SIZE_DEBUG] サイズフィールド: {model_info.get('size')}, 型: {type(model_info.get('size'))}")
+
                                                         # モデルサイズをセット (バイト単位)
                                                         download.model_size = model_info.get("size", 0)
                                                         # GBに変換 (小数点2桁まで)
-                                                        download.model_size_gb = round(download.model_size / (1024 * 1024 * 1024), 2)
+                                                        if download.model_size > 0:
+                                                            download.model_size_gb = round(download.model_size / (1024 * 1024 * 1024), 2)
+                                                        else:
+                                                            # モデルサイズが0または存在しない場合はダウンロードサイズを使用
+                                                            if download.total_size > 0:
+                                                                logger.info(f"[OLLAMA_SIZE_DEBUG] モデルサイズが0のためダウンロードサイズを使用: {download.total_size} bytes")
+                                                                download.model_size = download.total_size
+                                                                download.model_size_gb = round(download.model_size / (1024 * 1024 * 1024), 2)
+
                                                         download.model_info = model_info
-                                                        logger.info(f"モデルサイズ: {download.model_name}, {download.model_size_gb} GB")
+                                                        logger.info(f"[OLLAMA_SIZE_DEBUG] 最終セットされたモデルサイズ: {download.model_size} bytes, {download.model_size_gb} GB")
                                                         break
+
+                                                # モデルが見つからなかった場合のログ
+                                                if not found_model:
+                                                    logger.warning(f"[OLLAMA_SIZE_DEBUG] モデル {download.model_name} が見つかりませんでした。ダウンロードサイズを使用します")
+                                                    # ダウンロードサイズを使用
+                                                    if download.total_size > 0:
+                                                        download.model_size = download.total_size
+                                                        download.model_size_gb = round(download.model_size / (1024 * 1024 * 1024), 2)
+                                                        logger.info(f"[OLLAMA_SIZE_DEBUG] ダウンロードサイズから設定: {download.model_size} bytes, {download.model_size_gb} GB")
                                                 
                                                 # DB更新
                                                 self._save_download(download)

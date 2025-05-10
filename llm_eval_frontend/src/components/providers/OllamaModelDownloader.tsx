@@ -205,14 +205,25 @@ const OllamaModelDownloader: React.FC<OllamaModelDownloaderProps> = ({
     }
 
     const formatSize = (bytes?: number) => {
-      if (bytes === undefined) return '0 B';
+      if (bytes === undefined || bytes === null) return '0 B';
       if (bytes === 0) return '0 B';
-      
-      const k = 1024;
-      const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-      const i = Math.floor(Math.log(bytes) / Math.log(k));
-      
-      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+
+      try {
+        // 数値に変換して確実に計算できるようにする
+        const numBytes = Number(bytes);
+        if (isNaN(numBytes) || numBytes <= 0) return '0 B';
+
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(numBytes) / Math.log(k));
+
+        if (i < 0 || i >= sizes.length) return `${numBytes} B`;
+
+        return parseFloat((numBytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+      } catch (error) {
+        console.error('Size formatting error:', error);
+        return `${bytes} B`;
+      }
     };
     
     // ステータスのサニティチェック - ステータスが文字列でない場合の対応
@@ -284,13 +295,17 @@ const OllamaModelDownloader: React.FC<OllamaModelDownloaderProps> = ({
               <Typography variant="body2">
                 モデル名: {currentDownload.modelName}
               </Typography>
-              {currentDownload.modelSizeGb ? (
+              {currentDownload.modelSizeGb && currentDownload.modelSizeGb > 0 ? (
                 <Typography variant="body2">
                   モデルサイズ: {currentDownload.modelSizeGb} GB
                 </Typography>
-              ) : (
+              ) : currentDownload.totalSize && currentDownload.totalSize > 0 ? (
                 <Typography variant="body2">
                   ダウンロードサイズ: {formatSize(currentDownload.totalSize)}
+                </Typography>
+              ) : (
+                <Typography variant="body2">
+                  ダウンロードサイズ: 計算中...
                 </Typography>
               )}
               <Typography variant="body2">

@@ -79,11 +79,38 @@ export const ollamaApi = {
   getDownloadStatus: async (downloadId: string): Promise<OllamaModelDownload> => {
     try {
       const response = await apiClient.get<any>(`/api/v1/ollama/download/${downloadId}`);
-      
+
       console.log('Ollama download status response:', response);
-      
+
       // レスポンスがオブジェクト形式の場合
       if (response && typeof response === 'object') {
+        // サイズ値のログ出力（デバッグ用）
+        console.log('サイズ情報:', {
+          totalSize: response.total_size,
+          downloadedSize: response.downloaded_size,
+          modelSize: response.model_size,
+          modelSizeGb: response.model_size_gb
+        });
+
+        // サイズ情報のサニティチェック
+        let modelSize = 0;
+        let modelSizeGb = 0;
+
+        // モデルサイズが0、未定義、またはnullの場合
+        if (!response.model_size || response.model_size <= 0) {
+          console.log('モデルサイズが有効ではありません：', response.model_size);
+
+          // 代わりにダウンロードサイズを使用
+          if (response.total_size && response.total_size > 0) {
+            console.log('ダウンロードサイズを代用:', response.total_size);
+            modelSize = response.total_size;
+            modelSizeGb = Number((response.total_size / (1024 * 1024 * 1024)).toFixed(2));
+          }
+        } else {
+          modelSize = response.model_size;
+          modelSizeGb = response.model_size_gb;
+        }
+
         return {
           id: response.id,
           modelId: response.model_id,
@@ -92,8 +119,8 @@ export const ollamaApi = {
           progress: response.progress || 0,
           totalSize: response.total_size || 0,
           downloadedSize: response.downloaded_size || 0,
-          modelSize: response.model_size || 0,
-          modelSizeGb: response.model_size_gb || 0.0,
+          modelSize: modelSize,
+          modelSizeGb: modelSizeGb,
           error: response.error,
           endpoint: response.endpoint || '',
           createdAt: response.created_at,
@@ -103,7 +130,7 @@ export const ollamaApi = {
           modelInfo: response.model_info
         };
       }
-      
+
       throw new Error('Could not retrieve download status: Unexpected response format');
     } catch (error) {
       console.error('Error getting Ollama download status:', error);

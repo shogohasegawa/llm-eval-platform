@@ -14,14 +14,15 @@ class ApiClient {
 
     // 環境変数が設定されている場合はそれを使用し、設定されていない場合は相対パス
     // 開発環境: 相対パス、本番環境: 環境変数または相対パス
-    const useRelativePath = !import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_BASE_URL === '';
-    this.baseURL = useRelativePath ? '' : import.meta.env.VITE_API_BASE_URL;
+    // 常に相対パスを使用
+    console.log('環境変数VITE_API_BASE_URL:', import.meta.env.VITE_API_BASE_URL);
+    this.baseURL = '';
     
     console.log(`API Base URL: ${this.baseURL || '相対パス'}, Environment: ${import.meta.env.MODE}`);
-    console.log(`Using relative path: ${useRelativePath}`);
+    console.log(`Using relative path: true`);
     
     // バックエンドが利用可能かどうかをチェック（相対パスを使用）
-    const checkUrl = useRelativePath ? '/api/v1/metrics/available' : `${this.baseURL}/api/v1/metrics/available`;
+    const checkUrl = '/api/v1/metrics/available';
     
     fetch(checkUrl)
       .then(response => {

@@ -4,7 +4,7 @@ version: '3.8'
 # 使用方法: docker-compose up -d
 
 services:
-  api:
+  llm-api-backend:
     build:
       context: ./llm_eval_backend
       dockerfile: Dockerfile
@@ -20,23 +20,28 @@ services:
     environment:
       - LLMEVAL_ENV=${LLMEVAL_ENV}
       - LLMEVAL_LOG_LEVEL=${LLMEVAL_LOG_LEVEL}
-      - MLFLOW_TRACKING_URI=${MLFLOW_HOST_URI}
-      - MLFLOW_HOST=${MLFLOW_HOST}
-      - MLFLOW_PORT=${MLFLOW_PORT}
+      # MLflow接続設定
+      - MLFLOW_TRACKING_URI=http://llm-mlflow-tracking:5000
+      - MLFLOW_HOST=llm-mlflow-tracking
+      - MLFLOW_PORT=5000
+      # Ollama接続設定
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL}
+      # その他の設定
       - LLMEVAL_DB_PATH=${LLMEVAL_DB_PATH}
       - TZ=${TZ}
     depends_on:
-      - mlflow
-      - ollama
+      - llm-mlflow-tracking
+      # 外部Ollamaサービスを使用するため、依存関係からollamaを削除
+      # - llm-ollama-models
+    hostname: llm-api-backend
     restart: unless-stopped
     networks:
       - llm-eval-network
 
-  mlflow:
+  llm-mlflow-tracking:
     image: ghcr.io/mlflow/mlflow:latest
     ports:
-      - "${MLFLOW_EXTERNAL_PORT}:5000"
+      - "5001:5000"
     volumes:
       - ./llm_eval_backend/mlflow:/mlflow
     environment:
@@ -46,30 +51,34 @@ services:
       - MLFLOW_SERVE_ARTIFACTS=true
       - GUNICORN_CMD_ARGS="--access-logfile - --workers 1 --threads 2 --timeout 180 --forwarded-allow-ips='*' --log-level=debug"
       - ENABLE_CORS=true
-    command: mlflow server --host 0.0.0.0 --backend-store-uri sqlite:///mlflow/mlflow.db --default-artifact-root file:///mlflow/artifacts --serve-artifacts
+      - MLFLOW_CORS_ALLOW_ALL_ORIGINS=true
+      - MLFLOW_CORS_ALLOW_HEADERS=X-Requested-With,Content-Type,Authorization
+      - MLFLOW_CORS_ALLOW_METHODS=GET,POST,PUT,DELETE,OPTIONS
+    command: mlflow server --host 0.0.0.0 --backend-store-uri sqlite:///mlflow/mlflow.db --default-artifact-root file:///mlflow/artifacts --serve-artifacts --gunicorn-opts "--timeout 180 --log-level debug"
     user: root
     networks:
       - llm-eval-network
     restart: unless-stopped
 
-  ollama:
-    image: ollama/ollama:latest
-    ports:
-      - "${OLLAMA_PORT}:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    restart: unless-stopped
-    environment:
-      - OLLAMA_HOST=${OLLAMA_HOST}
-      - OLLAMA_ORIGINS=${OLLAMA_ORIGINS}
-      - OLLAMA_MODELS_PATH=${OLLAMA_MODELS_PATH}
-      - NVIDIA_VISIBLE_DEVICES=all
-    # Docker Composeバージョンに合わせたGPU設定
-    runtime: nvidia
-    networks:
-      - llm-eval-network
+# 外部Ollamaサービス（192.168.3.43）を使用するため、ollamaサービスをコメントアウト
+#  llm-ollama-models:
+#    image: ollama/ollama:latest
+#    ports:
+#      - "${OLLAMA_PORT}:11434"
+#    volumes:
+#      - ollama_data:/root/.ollama
+#    restart: unless-stopped
+#    environment:
+#      - OLLAMA_HOST=${OLLAMA_HOST}
+#      - OLLAMA_ORIGINS=${OLLAMA_ORIGINS}
+#      - OLLAMA_MODELS_PATH=${OLLAMA_MODELS_PATH}
+#      - NVIDIA_VISIBLE_DEVICES=all
+#    # Docker Composeバージョンに合わせたGPU設定
+#    runtime: nvidia
+#    networks:
+#      - llm-eval-network
 
-  llm-leaderboard-app:
+  llm-frontend-app:
     build:
       context: ./llm_eval_frontend
       dockerfile: Dockerfile
@@ -81,14 +90,22 @@ services:
       # フロントエンド用環境変数
       - VITE_API_BASE_URL=${VITE_API_BASE_URL}
       - VITE_OLLAMA_BASE_URL=${VITE_OLLAMA_BASE_URL}
-      - VITE_MLFLOW_BASE_URL=${VITE_MLFLOW_BASE_URL}
       - VITE_API_TIMEOUT=${VITE_API_TIMEOUT}
       - VITE_DEBUG_MODE=${VITE_DEBUG_MODE}
       - VITE_APP_NAME=${VITE_APP_NAME}
       - VITE_APP_VERSION=${VITE_APP_VERSION}
       - VITE_LOG_LEVEL=${VITE_LOG_LEVEL}
+      # MLflow設定
+      - VITE_MLFLOW_DIRECT_URL=http://${MLFLOW_EXTERNAL_HOST}:${MLFLOW_EXTERNAL_PORT}
+      - VITE_MLFLOW_INTERNAL_HOST=${MLFLOW_HOST}
+      - VITE_MLFLOW_INTERNAL_PORT=${MLFLOW_PORT}
+      - VITE_MLFLOW_PROXY_ENDPOINT=/proxy-mlflow
+      - VITE_MLFLOW_STATUS_ENDPOINT=/mlflow-status
+      # 開発モード設定
+      - VITE_DEV_SKIP_API_CHECK=${VITE_DEV_SKIP_API_CHECK:-false}
+      - VITE_DEV_FORCE_MLFLOW_OK=${VITE_DEV_FORCE_MLFLOW_OK:-false}
     depends_on:
-      - api
+      - llm-api-backend
     networks:
       - llm-eval-network
     restart: always

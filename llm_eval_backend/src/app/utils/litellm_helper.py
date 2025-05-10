@@ -191,12 +191,18 @@ def ensure_api_key(kwargs):
             elif model.startswith("gemini-"):
                 provider_name = "google"
         
-        # 明示的に無効なAPIキーを設定（APIキーエラーを発生させる）
-        error_message = f"APIキーが設定されていません: プロバイダ {provider_name} のモデル {model} の設定を確認してください。管理画面でAPIキーを設定してください。"
-        logger.error(error_message)
-        kwargs["api_key"] = "sk-invalid-not-set-please-configure-in-admin"
-        
-        logger.warning(f"APIキーが明示的に指定されていません: {error_message}")
+        # プロバイダ名がollamaの場合は特別処理（APIキーが不要）
+        if provider_name.lower() == "ollama":
+            # ollamaではAPIキーは不要なので、デフォルトのダミーAPIキーを設定
+            kwargs["api_key"] = "ollama_dummy_key"
+            logger.info(f"Ollamaモデルのためダミーキーを設定: {model}")
+        else:
+            # その他のプロバイダでは明示的に無効なAPIキーを設定（APIキーエラーを発生させる）
+            error_message = f"APIキーが設定されていません: プロバイダ {provider_name} のモデル {model} の設定を確認してください。管理画面でAPIキーを設定してください。"
+            logger.error(error_message)
+            kwargs["api_key"] = "sk-invalid-not-set-please-configure-in-admin"
+
+            logger.warning(f"APIキーが明示的に指定されていません: {error_message}")
     
     return kwargs
 
@@ -747,13 +753,9 @@ def validate_api_key(api_key: str, provider_name: str = None) -> bool:
     
     # Ollamaの場合は特別処理（APIキーが不要）
     if provider_name and provider_name.lower() == "ollama":
-        # Ollamaは任意の文字列をAPIキーとして受け付ける（実際には使用されない）
-        # "ollama"という文字列がAPIキーとして設定されている場合は有効と見なす
-        if api_key == "ollama" or api_key.startswith("ollama_"):
-            return True
-        else:
-            # Ollamaではないキーが設定されていればそれも有効（ただしエンドポイントも必要）
-            return len(api_key) >= 5
+        # OllamaではAPIキーは不要なので、どのような値でも有効とみなす
+        # APIキーチェックを回避するための特殊な処理
+        return True
     
     # プロバイダごとの検証
     if provider_name:
