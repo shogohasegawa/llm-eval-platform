@@ -627,50 +627,91 @@ async def process_batch(batch: List[Dict], model_name: str, provider_name: str,
     """
     # デバッグログ追加
     logger.info(f"【デバッグ】process_batch: dataset_name='{dataset_name}', n_shots={n_shots}")
-    
-    few_shots = await get_few_shot_samples(dataset_name, n_shots)
-    results = []
 
-    for sample in batch:
-        # 新しいフォーマット（input1/input2）と従来のフォーマット（input）の両方に対応
-        input_text = sample.get("input1", sample.get("input", ""))
-        messages = await format_prompt(instruction, input_text, few_shots)
-        response = await call_model_with_litellm(
-            messages=messages,
+    # Few-shotサンプルを取得
+    few_shots = await get_few_shot_samples(dataset_name, n_shots)
+
+    # LiteLLMのバッチ処理が利用可能かチェック
+    use_batch = False
+
+    # プロバイダ固有の設定を取得（APIキーなど）
+    from app.utils.litellm_helper import get_provider_options
+    provider_options = get_provider_options(provider_name)
+
+    # 現状、batch_completionだとうまくAPIキーが読み込めずバッチ処理できていない
+    # TODO: batch_completionとacompletionのAPIキー処理の違いを調査する
+
+    # APIキーが正しく設定されているか確認
+    api_key_available = False
+    if provider_options and "api_key" in provider_options and provider_options["api_key"]:
+        api_key_available = True
+        # マスク処理したAPIキーをログに記録（デバッグ用）
+        api_key = provider_options["api_key"]
+        if len(api_key) > 7:
+            masked_key = f"{api_key[:4]}...{api_key[-4:]}"
+            logger.info(f"利用可能なAPIキー検出（マスク済）: {masked_key}")
+
+    try:
+        import litellm
+        if hasattr(litellm, 'batch_completion') and api_key_available:
+            # バッチ処理を有効にするプロバイダをホワイトリストで指定
+            batch_supported_providers = ['openai', 'anthropic', 'claude', 'cohere', 'together', 'groq']
+
+            if provider_name.lower() in batch_supported_providers:
+                use_batch = True
+                logger.info(f"LiteLLMのbatch_completion機能を使用します (プロバイダ: {provider_name})")
+                from app.core.batch_evaluation import process_batch_efficiently
+            else:
+                logger.info(f"{provider_name}プロバイダではバッチ処理に互換性の問題があるため、従来の方法で処理します")
+                use_batch = False
+        elif not api_key_available:
+            logger.warning(f"APIキーが利用できないためバッチ処理はスキップされます: {provider_name}")
+            use_batch = False
+    except (ImportError, AttributeError) as e:
+        logger.warning(f"LiteLLMのbatch_completion機能を使用できません: {e}")
+        use_batch = False
+
+    if use_batch and len(batch) > 1 and provider_name.lower() in batch_supported_providers and api_key_available:
+        # LiteLLMのbatch_completion機能を使用
+        return await process_batch_efficiently(
+            batch=batch,
             model_name=model_name,
             provider_name=provider_name,
-            max_tokens=output_length,
+            instruction=instruction,
+            output_length=output_length,
+            few_shots=few_shots,
             additional_params=additional_params
         )
+    else:
+        # 従来の方法でサンプルを一つずつ処理
+        logger.info("従来の方法でサンプルを一つずつ処理します")
+        results = []
+        for sample in batch:
+            messages = await format_prompt(instruction, sample["input"], few_shots)
+            response = await call_model_with_litellm(
+                messages=messages,
+                model_name=model_name,
+                provider_name=provider_name,
+                max_tokens=output_length,
+                additional_params=additional_params
+            )
 
-        # 出力の前処理（テキスト整形など）
-        raw_output = response["content"]
-        processed_output = raw_output.strip()
-        # 必要に応じて、さらに処理を追加
+            # 出力の前処理（テキスト整形など）
+            raw_output = response["content"]
+            processed_output = raw_output.strip()
+            # 必要に応じて、さらに処理を追加
 
-        # 新しいフォーマット（input1/input2、output1/output2）と従来のフォーマット（input/output）の両方に対応
-        input_key = "input1" if "input1" in sample else "input"
-        output_key = "output1" if "output1" in sample else "output"
+            results.append({
+                "input": sample["input"],
+                "expected_output": sample["output"],
+                "raw_output": raw_output,
+                "processed_output": processed_output,
+                "messages": [{"role": m["role"], "content": m["content"]} for m in messages],
+                "provider": response["provider"],  # 使用したプロバイダー
+                "model": response["model"]         # 使用したモデル
+            })
 
-        result_dict = {
-            "input": sample.get(input_key, ""),
-            "expected_output": sample.get(output_key, ""),
-            "raw_output": raw_output,
-            "processed_output": processed_output,
-            "messages": [{"role": m["role"], "content": m["content"]} for m in messages],
-            "provider": response["provider"],  # 使用したプロバイダー
-            "model": response["model"]         # 使用したモデル
-        }
-
-        # マルチターン用の追加情報を格納（存在する場合）
-        if "input2" in sample:
-            result_dict["input2"] = sample["input2"]
-        if "output2" in sample:
-            result_dict["expected_output2"] = sample["output2"]
-
-        results.append(result_dict)
-
-    return results
+        return results
 
 async def run_evaluation(
     dataset_name: str,
@@ -718,26 +759,23 @@ async def run_evaluation(
     # 指標名で使用するデータセットの基本名を抽出（例：'aio_0shot' → 'aio'）
     logger.info(f"【デバッグ】処理前の base_name: '{base_name}'")
     
-    # シンプルな解決策: データセット名からshot情報を削除
-    if '_' in base_name:
-        parts = base_name.split('_')
-        # shotを含む部分をすべて削除
-        clean_parts = [part for part in parts if 'shot' not in part]
+    # # シンプルな解決策: データセット名からshot情報を削除
+    # if '_' in base_name:
+    #     parts = base_name.split('_')
+    #     # shotを含む部分をすべて削除
+    #     clean_parts = [part for part in parts if 'shot' not in part]
         
-        if clean_parts:
-            # クリーンな部分からデータセット名を再構築
-            base_name = '_'.join(clean_parts)
-        else:
-            # すべての部分にshotが含まれている場合
-            first_part = parts[0]
-            if 'shot' in first_part:
-                base_name = first_part.split('shot')[0]
-            else:
-                base_name = first_part
+    #     if clean_parts:
+    #         # クリーンな部分からデータセット名を再構築
+    #         base_name = '_'.join(clean_parts)
+    #     else:
+    #         # すべての部分にshotが含まれている場合
+    #         first_part = parts[0]
+    #         if 'shot' in first_part:
+    #             base_name = first_part.split('shot')[0]
+    #         else:
+    #             base_name = first_part
     
-    # データセット名が空になった場合のフォールバック
-    if not base_name:
-        base_name = "dataset"
     
     # 最終的な基本名を記録
     logger.info(f"【デバッグ】最終的な base_name: '{base_name}'")
@@ -748,14 +786,13 @@ async def run_evaluation(
     with dataset_path.open(encoding="utf-8") as f:
         dataset = json.load(f)
 
-    # メトリクス定義の取得（旧形式と新形式の両方をサポート）
+    # メトリクス定義の取得
     metrics_from_dataset = dataset["metrics"]
     
     # メトリクス名とパラメータのマッピングを作成
     metrics = []
     metrics_parameters = {}
     
-    # 旧形式（文字列のリスト）と新形式（辞書のリスト）の両方をサポート
     for metric_item in metrics_from_dataset:
         if isinstance(metric_item, str):
             # 旧形式: 文字列のみ
@@ -766,6 +803,7 @@ async def run_evaluation(
             metrics.append(metric_name)
             if "parameters" in metric_item and metric_item["parameters"]:
                 metrics_parameters[metric_name] = metric_item["parameters"]
+    logger.info(f"metrics_parameters: {metrics_parameters}")
     
     instruction = dataset["instruction"]
     output_length = dataset["output_length"]
@@ -811,29 +849,10 @@ async def run_evaluation(
         for metric_name in metrics:
             if metric_name in metrics_func_map:
                 metric_func = metrics_func_map[metric_name]
-                scores = []
-                for result in shot_results:
-                    if result["processed_output"].startswith("ERROR:"):
-                        continue
-
-                    # MT-Bench特有の追加パラメータを準備（マルチターン評価用）
-                    extra_params = {}
-
-                    # input1/input2がある場合、それを渡す
-                    if "input" in result:
-                        extra_params["input1"] = result.get("input", "")
-                    if "input2" in result:
-                        extra_params["input2"] = result.get("input2", "")
-
-                    # output1/output2がある場合、それを渡す
-                    if "expected_output" in result:
-                        extra_params["output1"] = result.get("expected_output", "")
-                    if "expected_output2" in result:
-                        extra_params["output2"] = result.get("expected_output2", "")
-
-                    # メトリクス関数に渡す際、新しいフォーマットの追加パラメータも含める
-                    score = metric_func(result["processed_output"], result["expected_output"], **extra_params)
-                    scores.append(score)
+                scores = [
+                    metric_func(result["processed_output"], result["expected_output"])
+                    for result in shot_results if not result["processed_output"].startswith("ERROR:")
+                ]
                 if scores:  # エラーを除いたスコアがある場合のみ平均を計算
                     avg_score = sum(scores) / len(scores)
                     # シンプルな解決: メトリクス名を直接構築
@@ -849,19 +868,17 @@ async def run_evaluation(
                         logger.info(f"【デバッグ】パラメータ保存キー: '{param_key}'")
                         all_results[param_key] = metrics_parameters[metric_name]
                 else:
-                    # シンプルな解決: スコアなしメトリクス名を直接構築
                     result_key = f"{base_name}_{shot}shot_{metric_name}"
                     logger.info(f"【デバッグ】スコアなしメトリクス保存キー: '{result_key}'")
                     all_results[result_key] = 0
             else:
                 logger.warning(f"Metric '{metric_name}' specified in dataset but not found in registry")
 
-        # シンプルな解決: 詳細キーを直接構築
         details_key = f"{base_name}_{shot}shot_details"
         logger.info(f"【デバッグ】詳細キー: '{details_key}'")
         all_results[details_key] = shot_results
 
-    # サマリー生成 - シンプルな解決
+    # サマリー生成
     summary = []
     for shot in n_shots:
         # 基本情報
