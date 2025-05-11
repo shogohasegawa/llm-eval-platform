@@ -71,8 +71,18 @@ class Settings(BaseSettings):
     REDIS_HOST: str = "localhost"  # Redisホスト
     REDIS_PORT: int = 6379  # Redisポート
 
-    # 処理設定
+    # バッチ処理設定
+    # TODO: バッチ処理とシングル処理の挙動の違いに関する調査事項
+    # - batch_completionとacompletionのAPIキー処理の違いを調査
+    # - 各プロバイダのバッチ処理対応状況の確認
+    # - バッチ処理のパフォーマンス最適化方法
     BATCH_SIZE: int = 5
+    # バッチ処理をサポートするプロバイダのリスト（順次追加予定）
+    BATCH_SUPPORTED_PROVIDERS: List[str] = ['openai', 'anthropic', 'claude', 'cohere', 'together', 'groq']
+    # バッチ処理が可能なサイズの最大値（プロバイダによって異なる場合あり）
+    MAX_BATCH_SIZE: int = 20
+
+    # 評価設定
     DEFAULT_NUM_SAMPLES: int = 10
     DEFAULT_N_SHOTS: list = [0, 2]
 
