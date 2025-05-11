@@ -103,10 +103,10 @@ class ProviderRepository:
     def get_provider_by_id(self, provider_id: str) -> Optional[Dict[str, Any]]:
         """
         IDによりプロバイダーを取得
-        
+
         Args:
             provider_id: プロバイダーID
-            
+
         Returns:
             プロバイダー情報またはNone
         """
@@ -115,14 +115,43 @@ class ProviderRepository:
         FROM providers
         WHERE id = ?
         """
-        
+
         try:
             provider = self.db.fetch_one(query, (provider_id,))
-            
+
             if provider:
                 # is_activeをブール値に変換
                 provider["is_active"] = bool(provider["is_active"])
-            
+
+            return provider
+        except Exception as e:
+            logger.error(f"プロバイダー取得エラー: {e}")
+            raise
+
+    def get_provider_by_name(self, name_or_type: str) -> Optional[Dict[str, Any]]:
+        """
+        名前またはタイプによりプロバイダーを取得
+
+        Args:
+            name_or_type: プロバイダー名またはタイプ（例: "openai", "anthropic"など）
+
+        Returns:
+            プロバイダー情報またはNone
+        """
+        query = """
+        SELECT id, name, type, endpoint, api_key, is_active, created_at, updated_at
+        FROM providers
+        WHERE name = ? OR type = ?
+        LIMIT 1
+        """
+
+        try:
+            provider = self.db.fetch_one(query, (name_or_type, name_or_type))
+
+            if provider:
+                # is_activeをブール値に変換
+                provider["is_active"] = bool(provider["is_active"])
+
             return provider
         except Exception as e:
             logger.error(f"プロバイダー取得エラー: {e}")
@@ -218,11 +247,40 @@ class ProviderRepository:
             raise
 
 
+# APIキーを取得する関数
+def get_api_key_by_provider_name(provider_name: str) -> Optional[str]:
+    """
+    プロバイダー名またはタイプからAPIキーを取得する
+
+    Args:
+        provider_name: プロバイダー名またはタイプ（例: "openai", "anthropic"など）
+
+    Returns:
+        APIキー、見つからない場合はNone
+    """
+    try:
+        # プロバイダーリポジトリを取得
+        provider_repo = get_provider_repository()
+
+        # 名前またはタイプでプロバイダーを検索
+        provider = provider_repo.get_provider_by_name(provider_name)
+
+        if provider and provider.get("api_key"):
+            logger.info(f"プロバイダー '{provider_name}' のAPIキーを取得しました")
+            return provider["api_key"]
+
+        # プロバイダーが見つからない、またはAPIキーが設定されていない場合
+        logger.warning(f"プロバイダー '{provider_name}' のAPIキーが見つかりません")
+        return None
+    except Exception as e:
+        logger.error(f"APIキー取得エラー: {e}")
+        return None
+
 # シングルトンインスタンスを取得する関数
 def get_provider_repository() -> ProviderRepository:
     """
     プロバイダーリポジトリのインスタンスを取得
-    
+
     Returns:
         ProviderRepositoryインスタンス
     """

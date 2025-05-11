@@ -32,7 +32,7 @@ class BaseMetric(ABC):
         self.parameters = parameters or {}
 
     @abstractmethod
-    def calculate(self, hypothesis: str, reference: str) -> float:
+    def calculate(self, hypothesis: str, reference: str, **kwargs) -> float:
         """
         評価スコアを計算する
 
