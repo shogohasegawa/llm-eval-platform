@@ -95,7 +95,7 @@ def convert_japanese_mtbench_to_jaster(
     jaster_data = {
         "instruction": instruction,
         "output_length": max_tokens,
-        "metrics": ["mtbench_judge"],
+        "metrics": ["llm_as_a_judge"],
         "metrics_config": metrics_config,
         "few_shots": [],
         "samples": samples

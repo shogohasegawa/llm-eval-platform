@@ -2,7 +2,7 @@
   "instruction": "",
   "output_length": 1024,
   "metrics": [
-    "mtbench_judge"
+    "llm_as_a_judge"
   ],
   "metrics_config": {
     "temperature": 0.1,
