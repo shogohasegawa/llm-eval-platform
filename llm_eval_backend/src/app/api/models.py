@@ -209,7 +209,8 @@ class DatasetMetadata(BaseModel):
     instruction: Optional[str] = None
     metrics: Optional[Union[List[Union[str, Dict[str, Any], MetricConfig]], Dict[str, Any]]] = None
     output_length: Optional[int] = None
-    
+    additional_props: Optional[Dict[str, Any]] = Field(default_factory=dict)  # 追加のプロパティ（フォーマットなど）
+
     class Config:
         extra = "allow"  # 追加のフィールドを許可
 
@@ -223,6 +224,8 @@ class DatasetDetailResponse(BaseModel):
     """データセット詳細レスポンス"""
     metadata: DatasetMetadata
     items: List[DatasetItem]
+    # 表示用設定（フォーマット情報やラベル設定など）
+    display_config: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
 
 class DatasetDeleteResponse(BaseModel):

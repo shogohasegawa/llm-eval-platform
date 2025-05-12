@@ -48,10 +48,10 @@ async def upload_dataset_file(
         DatasetDetailResponse: アップロードされたデータセット情報
     """
     # ファイル形式のチェック
-    if not file.filename.endswith('.json'):
+    if not (file.filename.endswith('.json') or file.filename.endswith('.jsonl')):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="JSONファイルのみアップロード可能です。"
+            detail="JSONまたはJSONLファイルのみアップロード可能です。"
         )
     
     # データセットタイプのチェック
@@ -65,36 +65,59 @@ async def upload_dataset_file(
         # ファイルの読み込み
         content = await file.read()
         file_content = content.decode("utf-8")
-        
-        # JSONとしてパース
+
+        # JSONまたはJSONL形式かを判断
+        is_jsonl = file.filename.endswith('.jsonl')
+
         try:
-            data = json.loads(file_content)
+            if is_jsonl:
+                # JSONLとしてパース（各行がJSONオブジェクト）
+                data = []
+                for line in file_content.splitlines():
+                    if line.strip():  # 空行をスキップ
+                        data.append(json.loads(line))
+            else:
+                # 通常のJSONとしてパース
+                data = json.loads(file_content)
         except json.JSONDecodeError:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="無効なJSON形式です。"
+                detail="無効なJSONまたはJSONL形式です。"
             )
         
         # ファイル名から拡張子を除いた部分をデータセット名として使用
         dataset_name = os.path.splitext(file.filename)[0]
         
         # ファイルの保存
-        file_path = save_json_file(dataset_name, data, dataset_type)
+        is_jsonl = file.filename.endswith('.jsonl')
+        file_path = save_json_file(dataset_name, data, dataset_type, is_jsonl)
         
         logger.info(f"JSONファイルからデータセットを保存しました: {file_path}")
         
         # 保存されたデータセットの情報を取得
         saved_dataset = get_dataset_by_path(str(file_path))
-        
+
         if not saved_dataset:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="データセットの保存に成功しましたが、読み込みに失敗しました。"
             )
-        
+
+        # ファイル形式に基づく表示設定
+        is_jsonl = file.filename.endswith('.jsonl')
+        display_config = {
+            "file_format": "jsonl" if is_jsonl else "json",
+            "labels": {
+                "primary": "質問" if is_jsonl else "指示",
+                "secondary": "質問(1ターン目)" if is_jsonl else "指示",
+                "tertiary": "質問(2ターン目)" if is_jsonl else "入力内容"
+            }
+        }
+
         return DatasetDetailResponse(
             metadata=saved_dataset["metadata"],
-            items=saved_dataset["items"]
+            items=saved_dataset["items"],
+            display_config=display_config
         )
     except HTTPException:
         raise
@@ -164,16 +187,28 @@ async def get_dataset_detail(
             )
         
         dataset = get_dataset_by_name(name, type)
-        
+
         if not dataset:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"データセット '{name}'{' (' + type + ')' if type else ''} が見つかりません。"
             )
-        
+
+        # ファイル形式に基づく表示設定
+        is_jsonl = dataset["metadata"].file_path.lower().endswith('.jsonl')
+        display_config = {
+            "file_format": "jsonl" if is_jsonl else "json",
+            "labels": {
+                "primary": "質問" if is_jsonl else "指示",
+                "secondary": "質問(1ターン目)" if is_jsonl else "指示",
+                "tertiary": "質問(2ターン目)" if is_jsonl else "入力内容"
+            }
+        }
+
         return DatasetDetailResponse(
             metadata=dataset["metadata"],
-            items=dataset["items"]
+            items=dataset["items"],
+            display_config=display_config
         )
     except HTTPException:
         raise

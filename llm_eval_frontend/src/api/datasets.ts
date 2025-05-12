@@ -16,9 +16,11 @@ export const datasetsApi = {
   getDatasetByName: async (name: string, type?: string): Promise<Dataset> => {
     const params = type ? { type } : undefined;
     const response = await apiClient.get(`/api/v1/datasets/${name}`, { params });
+
     return {
       ...response.metadata,
       items: response.items || [],
+      display_config: response.display_config,
     };
   },
 
@@ -32,16 +34,17 @@ export const datasetsApi = {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('dataset_type', type);
-    
+
     const response = await apiClient.post('/api/v1/datasets/upload', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
     });
-    
+
     return {
       ...response.metadata,
       items: response.items || [],
+      display_config: response.display_config,
     };
   }
 };

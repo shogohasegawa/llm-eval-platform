@@ -53,59 +53,8 @@ const DatasetDetail: React.FC = () => {
     error,
   } = useDatasetByName(id || '', datasetType || undefined);
   
-  // データセットを処理する
-  const enhancedDataset = React.useMemo(() => {
-    if (!dataset) return null;
-    
-    // データセットをそのまま返す（デフォルト値を使用しない）
-    return {
-      ...dataset,
-      // デフォルト値を設定しない - 実際のデータのみを使用
-      instruction: dataset.instruction,
-      metrics: dataset.metrics,
-      output_length: dataset.output_length,
-    };
-  }, [dataset]);
-  
-  // デバッグ出力
-  React.useEffect(() => {
-    // パラメータ情報をログ出力
-    console.log('データセット詳細パラメータ:', { 
-      id, 
-      datasetType,
-      searchParams: Object.fromEntries(searchParams.entries())
-    });
-    
-    if (dataset) {
-      console.log('元のデータセット:', dataset);
-      console.log('拡張したデータセット:', enhancedDataset);
-      
-      if (enhancedDataset) {
-        // サマリー表示の条件チェックをデバッグ
-        const hasInstructions = !!enhancedDataset.instruction || enhancedDataset.items.some(item => item.instruction);
-        const hasMetrics = !!enhancedDataset.metrics || enhancedDataset.items.some(item => item.additional_data?.metrics);
-        const hasOutputLength = enhancedDataset.output_length !== undefined || enhancedDataset.items.some(item => item.additional_data?.output_length);
-        
-        console.log('データセットサマリー条件チェック:');
-        console.log('- 指示あり:', hasInstructions);
-        console.log('- メトリクスあり:', hasMetrics);
-        console.log('- 出力長あり:', hasOutputLength);
-        console.log('- サマリー表示条件:', hasInstructions || hasMetrics || hasOutputLength);
-        
-        // 各アイテムの詳細も確認
-        console.log('アイテムの詳細:');
-        enhancedDataset.items.forEach((item, index) => {
-          console.log(`アイテム[${index}]:`, {
-            id: item.id,
-            has_instruction: !!item.instruction,
-            has_metrics: !!item.additional_data?.metrics,
-            has_output_length: !!item.additional_data?.output_length,
-            additional_data: item.additional_data
-          });
-        });
-      }
-    }
-  }, [id, datasetType, searchParams, dataset, enhancedDataset]);
+  // バックエンドから受け取ったデータセットをそのまま使用
+  const enhancedDataset = dataset;
 
   // エラーハンドリング
   if (error) {
@@ -530,20 +479,43 @@ const DatasetDetail: React.FC = () => {
               {item.input && item.input.trim() ? (
                 <Box sx={{ mb: 3 }}>
                   <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
-                    入力
+                    {dataset?.display_config?.file_format === 'jsonl' ? dataset?.display_config?.labels?.primary : '入力'}
                   </Typography>
                   <Paper variant="outlined" sx={{ p: 2, backgroundColor: '#f8f9fa', whiteSpace: 'pre-wrap' }}>
                     {item.instruction ? (
                       <>
+                        {/* 1ターン目 (instruction) */}
                         <Typography variant="subtitle2" color="primary.dark" gutterBottom>
-                          指示:
+                          {dataset?.display_config?.file_format === 'jsonl' ? dataset?.display_config?.labels?.secondary + ':' : '指示:'}
                         </Typography>
                         <Typography paragraph>{item.instruction}</Typography>
-                        <Divider sx={{ my: 1 }} />
-                        <Typography variant="subtitle2" color="primary.dark" gutterBottom>
-                          入力内容:
-                        </Typography>
-                        {item.input}
+
+                        {/* 2ターン目 (input) - 従来の互換性のため */}
+                        {item.input && (
+                          <>
+                            <Divider sx={{ my: 1 }} />
+                            <Typography variant="subtitle2" color="primary.dark" gutterBottom>
+                              {dataset?.display_config?.file_format === 'jsonl' ? dataset?.display_config?.labels?.tertiary + ':' : '入力内容:'}
+                            </Typography>
+                            <Typography paragraph>{item.input}</Typography>
+                          </>
+                        )}
+
+                        {/* 3ターン目以降 - additional_dataのturn_dataを使用 */}
+                        {item.additional_data?.turn_data && Array.isArray(item.additional_data.turn_data) &&
+                         item.additional_data.turn_data.length > 2 &&
+                         item.additional_data.turn_data.slice(2).map((turnText, turnIndex) => (
+                          <React.Fragment key={turnIndex + 2}>
+                            <Divider sx={{ my: 1 }} />
+                            <Typography variant="subtitle2" color="primary.dark" gutterBottom>
+                              {/* 3ターン目以降は動的に生成 */}
+                              {dataset?.display_config?.file_format === 'jsonl'
+                                ? `質問(${turnIndex + 3}ターン目):`
+                                : `入力(${turnIndex + 3}):`}
+                            </Typography>
+                            <Typography paragraph>{turnText}</Typography>
+                          </React.Fragment>
+                        ))}
                       </>
                     ) : (
                       item.input
@@ -553,7 +525,7 @@ const DatasetDetail: React.FC = () => {
               ) : item.instruction ? (
                 <Box sx={{ mb: 3 }}>
                   <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
-                    指示
+                    {dataset?.display_config?.file_format === 'jsonl' ? dataset?.display_config?.labels?.secondary : '指示'}
                   </Typography>
                   <Paper variant="outlined" sx={{ p: 2, backgroundColor: '#f8f9fa', whiteSpace: 'pre-wrap' }}>
                     {item.instruction}

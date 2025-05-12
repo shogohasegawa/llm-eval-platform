@@ -21,6 +21,8 @@ export interface Dataset {
   metrics?: string[] | Record<string, any> | string;
   output_length?: number;
   samples?: DatasetItem[];
+  // 表示用設定
+  display_config?: DisplayConfig;
 }
 
 export interface DatasetItem {
@@ -44,15 +46,26 @@ export interface DatasetMetadata {
   created_at: Date;
   item_count: number;
   file_path: string;
+  additional_props?: Record<string, any>;
 }
 
 export interface DatasetListResponse {
   datasets: DatasetMetadata[];
 }
 
+export interface DisplayConfig {
+  file_format: 'json' | 'jsonl';
+  labels: {
+    primary: string;
+    secondary: string;
+    tertiary: string;
+  };
+}
+
 export interface DatasetDetailResponse {
   metadata: DatasetMetadata;
   items: DatasetItem[];
+  display_config?: DisplayConfig;
 }
 
 export interface DatasetDeleteResponse {

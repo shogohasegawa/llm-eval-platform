@@ -45,8 +45,8 @@ const DatasetUploadDialog: React.FC<DatasetUploadDialogProps> = ({
     setError(null);
 
     // ファイル形式のバリデーション
-    if (selectedFile && !selectedFile.name.endsWith('.json')) {
-      setError('JSONファイル(.json)のみアップロード可能です。');
+    if (selectedFile && !selectedFile.name.endsWith('.json') && !selectedFile.name.endsWith('.jsonl')) {
+      setError('JSONファイル(.json)またはJSONLファイル(.jsonl)のみアップロード可能です。');
     }
   };
 
@@ -60,8 +60,8 @@ const DatasetUploadDialog: React.FC<DatasetUploadDialogProps> = ({
       return;
     }
 
-    if (!file.name.endsWith('.json')) {
-      setError('JSONファイル(.json)のみアップロード可能です。');
+    if (!file.name.endsWith('.json') && !file.name.endsWith('.jsonl')) {
+      setError('JSONファイル(.json)またはJSONLファイル(.jsonl)のみアップロード可能です。');
       return;
     }
 
@@ -91,10 +91,10 @@ const DatasetUploadDialog: React.FC<DatasetUploadDialogProps> = ({
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-      <DialogTitle>JSONファイルをアップロード</DialogTitle>
+      <DialogTitle>データセットファイルをアップロード</DialogTitle>
       <DialogContent>
         <DialogContentText>
-          JSONファイルを選択して、データセットとしてアップロードしてください。
+          JSONまたはJSONLファイルを選択して、データセットとしてアップロードしてください。
           ファイル名がデータセット名として使用されます。
         </DialogContentText>
 
@@ -130,7 +130,7 @@ const DatasetUploadDialog: React.FC<DatasetUploadDialogProps> = ({
           }}
         >
           <input
-            accept=".json"
+            accept=".json,.jsonl"
             id="upload-dataset-file"
             type="file"
             style={{ display: 'none' }}
