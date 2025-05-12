@@ -21,8 +21,10 @@ dependencies = [
     "python-multipart>=0.0.20",
     "httpx>=0.24.0",
     "scipy>=1.14.1",
-#    "bert-score>=0.3.13",
+    #    "bert-score>=0.3.13",
     "unbabel-comet>=2.2.1",
+    "shortuuid>=1.0.13",
+    "tqdm>=4.67.1",
 ]
 
 [build-system]

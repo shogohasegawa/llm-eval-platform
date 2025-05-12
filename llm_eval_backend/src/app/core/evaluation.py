@@ -13,6 +13,8 @@ import datetime
 import time
 import random
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+import re
+from typing import List, Dict, Any, Optional
 
 # 設定のインポート
 from app.config import get_settings
@@ -606,9 +608,16 @@ async def call_model_with_litellm(
             "model": model_name
         }
 
-async def process_batch(batch: List[Dict], model_name: str, provider_name: str,
-                       instruction: str, output_length: int, n_shots: int, dataset_name: str,
-                       additional_params: Optional[Dict[str, Any]] = None):
+async def process_batch(
+    batch: List[Dict[str, Any]],
+    model_name: str,
+    provider_name: str,
+    instruction: str,
+    output_length: int,
+    n_shots: int,
+    dataset_name: str,
+    additional_params: Optional[Dict[str, Any]] = None
+) -> List[Dict[str, Any]]:
     """
     バッチ処理を行う関数
 
@@ -627,14 +636,12 @@ async def process_batch(batch: List[Dict], model_name: str, provider_name: str,
     """
     # デバッグログ追加
     logger.info(f"【デバッグ】process_batch: dataset_name='{dataset_name}', n_shots={n_shots}")
-    
+
     few_shots = await get_few_shot_samples(dataset_name, n_shots)
     results = []
 
     for sample in batch:
-        # 新しいフォーマット（input1/input2）と従来のフォーマット（input）の両方に対応
-        input_text = sample.get("input1", sample.get("input", ""))
-        messages = await format_prompt(instruction, input_text, few_shots)
+        messages = await format_prompt(instruction, sample["input"], few_shots)
         response = await call_model_with_litellm(
             messages=messages,
             model_name=model_name,
@@ -648,29 +655,18 @@ async def process_batch(batch: List[Dict], model_name: str, provider_name: str,
         processed_output = raw_output.strip()
         # 必要に応じて、さらに処理を追加
 
-        # 新しいフォーマット（input1/input2、output1/output2）と従来のフォーマット（input/output）の両方に対応
-        input_key = "input1" if "input1" in sample else "input"
-        output_key = "output1" if "output1" in sample else "output"
-
-        result_dict = {
-            "input": sample.get(input_key, ""),
-            "expected_output": sample.get(output_key, ""),
+        results.append({
+            "input": sample["input"],
+            "expected_output": sample["output"],
             "raw_output": raw_output,
             "processed_output": processed_output,
             "messages": [{"role": m["role"], "content": m["content"]} for m in messages],
             "provider": response["provider"],  # 使用したプロバイダー
             "model": response["model"]         # 使用したモデル
-        }
-
-        # マルチターン用の追加情報を格納（存在する場合）
-        if "input2" in sample:
-            result_dict["input2"] = sample["input2"]
-        if "output2" in sample:
-            result_dict["expected_output2"] = sample["output2"]
-
-        results.append(result_dict)
+        })
 
     return results
+
 
 async def run_evaluation(
     dataset_name: str,
@@ -811,29 +807,10 @@ async def run_evaluation(
         for metric_name in metrics:
             if metric_name in metrics_func_map:
                 metric_func = metrics_func_map[metric_name]
-                scores = []
-                for result in shot_results:
-                    if result["processed_output"].startswith("ERROR:"):
-                        continue
-
-                    # MT-Bench特有の追加パラメータを準備（マルチターン評価用）
-                    extra_params = {}
-
-                    # input1/input2がある場合、それを渡す
-                    if "input" in result:
-                        extra_params["input1"] = result.get("input", "")
-                    if "input2" in result:
-                        extra_params["input2"] = result.get("input2", "")
-
-                    # output1/output2がある場合、それを渡す
-                    if "expected_output" in result:
-                        extra_params["output1"] = result.get("expected_output", "")
-                    if "expected_output2" in result:
-                        extra_params["output2"] = result.get("expected_output2", "")
-
-                    # メトリクス関数に渡す際、新しいフォーマットの追加パラメータも含める
-                    score = metric_func(result["processed_output"], result["expected_output"], **extra_params)
-                    scores.append(score)
+                scores = [
+                    metric_func(result["processed_output"], result["expected_output"])
+                    for result in shot_results if not result["processed_output"].startswith("ERROR:")
+                ]
                 if scores:  # エラーを除いたスコアがある場合のみ平均を計算
                     avg_score = sum(scores) / len(scores)
                     # シンプルな解決: メトリクス名を直接構築

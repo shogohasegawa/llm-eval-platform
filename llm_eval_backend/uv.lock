@@ -147,7 +147,9 @@ dependencies = [
     { name = "redis" },
     { name = "sacrebleu" },
     { name = "scipy" },
+    { name = "shortuuid" },
     { name = "tenacity" },
+    { name = "tqdm" },
     { name = "unbabel-comet" },
     { name = "uvicorn" },
 ]
@@ -171,7 +173,9 @@ requires-dist = [
     { name = "redis", specifier = ">=5.0.1" },
     { name = "sacrebleu", specifier = ">=2.3.1" },
     { name = "scipy", specifier = ">=1.14.1" },
+    { name = "shortuuid", specifier = ">=1.0.13" },
     { name = "tenacity", specifier = ">=8.2.3" },
+    { name = "tqdm", specifier = ">=4.67.1" },
     { name = "unbabel-comet", specifier = ">=2.2.1" },
     { name = "uvicorn", specifier = ">=0.34.2" },
 ]
@@ -2546,6 +2550,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/70/dc/3976b322de9d2e87ed0007cf04cc7553969b6c7b3f48a565d0333748fbcd/setuptools-80.3.1.tar.gz", hash = "sha256:31e2c58dbb67c99c289f51c16d899afedae292b978f8051efaf6262d8212f927", size = 1315082 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/53/7e/5d8af3317ddbf9519b687bd1c39d8737fde07d97f54df65553faca5cffb1/setuptools-80.3.1-py3-none-any.whl", hash = "sha256:ea8e00d7992054c4c592aeb892f6ad51fe1b4d90cc6947cc45c45717c40ec537", size = 1201172 },
+]
+
+[[package]]
+name = "shortuuid"
+version = "1.0.13"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/8c/e2/bcf761f3bff95856203f9559baf3741c416071dd200c0fc19fad7f078f86/shortuuid-1.0.13.tar.gz", hash = "sha256:3bb9cf07f606260584b1df46399c0b87dd84773e7b25912b7e391e30797c5e72", size = 9662 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c0/44/21d6bf170bf40b41396480d8d49ad640bca3f2b02139cd52aa1e272830a5/shortuuid-1.0.13-py3-none-any.whl", hash = "sha256:a482a497300b49b4953e15108a7913244e1bb0d41f9d332f5e9925dba33a3c5a", size = 10529 },
 ]
 
 [[package]]
