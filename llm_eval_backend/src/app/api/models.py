@@ -307,3 +307,31 @@ class InferenceDetailResponse(BaseModel):
     """推論詳細レスポンス"""
     inference: Inference
     results: List[InferenceResult]
+
+
+class JsonlInferenceRequest(BaseModel):
+    """JSONLデータセット推論リクエストモデル"""
+    dataset_path: str
+    provider_id: str
+    model_id: str
+    max_tokens: Optional[int] = 1024
+    temperature: Optional[float] = 0.7
+    num_samples: Optional[int] = None
+    system_message: Optional[str] = "You are a helpful assistant."
+
+
+class JsonlInferenceResponse(BaseModel):
+    """JSONLデータセット推論レスポンスモデル"""
+    job_id: str
+    status: str
+    message: str
+    dataset_path: str
+    model: str
+    result_file: Optional[str] = None
+
+
+class JsonlInferenceResult(BaseModel):
+    """JSONLデータセット推論結果モデル"""
+    question_id: Union[str, int]
+    category: Optional[str]
+    turns: List[Dict[str, Any]]

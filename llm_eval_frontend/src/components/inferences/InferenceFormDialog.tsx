@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Dialog, 
-  DialogTitle, 
-  DialogContent, 
-  DialogActions, 
-  Button, 
-  TextField, 
-  FormControl, 
-  InputLabel, 
-  Select, 
-  MenuItem, 
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
   Grid,
   CircularProgress,
   FormHelperText,
@@ -20,10 +20,12 @@ import {
   AccordionDetails,
   Slider,
   Stack,
-  Chip
+  Chip,
+  Alert
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import SettingsIcon from '@mui/icons-material/Settings';
+import ChatIcon from '@mui/icons-material/Chat';
 import { InferenceFormData } from '../../types/inference';
 import { Dataset } from '../../types/dataset';
 import { Provider, Model } from '../../types/provider';
@@ -64,13 +66,15 @@ const InferenceFormDialog: React.FC<InferenceFormDialogProps> = ({
     nShots: 0,          // デフォルト: 0
     maxTokens: 512,      // デフォルト: 512
     temperature: 0.7,    // デフォルト: 0.7
-    topP: 1.0            // デフォルト: 1.0
+    topP: 1.0           // デフォルト: 1.0
   };
 
   // フォームの状態
   const [formData, setFormData] = useState<InferenceFormData>(initialData || defaultData);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [expandedSettings, setExpandedSettings] = useState<boolean>(false);
+  const [isJsonlDataset, setIsJsonlDataset] = useState<boolean>(false);
+  const [selectedDataset, setSelectedDataset] = useState<Dataset | null>(null);
 
   // フォームリセット
   const resetForm = () => {
@@ -201,6 +205,8 @@ const InferenceFormDialog: React.FC<InferenceFormDialogProps> = ({
         // 名前とタイプを分離
         datasetId: datasetName,
         datasetType: datasetType, // 新しいフィールド
+        // JSONLデータセット形式を設定
+        isJsonlDataset: isJsonlDataset,
         // スネークケース形式のフィールド名を追加（バックエンドAPI用）
         dataset_id: datasetName,
         dataset_type: datasetType, // 新しいフィールド
@@ -209,7 +215,8 @@ const InferenceFormDialog: React.FC<InferenceFormDialogProps> = ({
         num_samples: formData.numSamples,
         n_shots: formData.nShots,
         max_tokens: formData.maxTokens,
-        top_p: formData.topP
+        top_p: formData.topP,
+        // システムメッセージはバックエンドのデフォルト値を使用
       };
       
       // 詳細なログを出力
@@ -281,21 +288,43 @@ const InferenceFormDialog: React.FC<InferenceFormDialogProps> = ({
                   // 詳細なデバッグ情報
                   console.log('Dataset selection event type:', e.type);
                   console.log('Dataset selection raw value:', e.target.value);
-                  
+
                   // MUIのSelectChangeEventからstring型の値を直接取得
                   const selectedValue = String(e.target.value);
                   console.log('Dataset selection converted value:', selectedValue);
-                  
+
+                  // データセット名とタイプを分離
+                  let datasetName = '';
+                  let datasetType = '';
+
+                  if (selectedValue && selectedValue.includes('__')) {
+                    const parts = selectedValue.split('__');
+                    datasetName = parts[0];
+                    datasetType = parts[1];
+                  }
+
+                  // 選択されたデータセットオブジェクトを検索
+                  const dataset = datasets.find(ds => ds.name === datasetName && ds.type === datasetType);
+                  setSelectedDataset(dataset || null);
+
+                  // データセットがJSONL形式かどうかを判定
+                  const isJsonl = dataset?.display_config?.file_format === 'jsonl';
+                  setIsJsonlDataset(isJsonl);
+
+                  console.log('Selected dataset:', dataset);
+                  console.log('Is JSONL format:', isJsonl);
+
                   // 直接フォームデータを更新
                   setFormData(prevData => {
                     const newData = {
                       ...prevData,
-                      datasetId: selectedValue
+                      datasetId: selectedValue,
+                      isJsonlDataset: isJsonl // JSONLフラグを設定
                     };
                     console.log('Updated form data directly:', newData);
                     return newData;
                   });
-                  
+
                   // エラーをクリア
                   if (errors.datasetId) {
                     setErrors(prev => {
@@ -366,8 +395,17 @@ const InferenceFormDialog: React.FC<InferenceFormDialogProps> = ({
           </Grid>
 
           <Grid item xs={12}>
-            <Accordion 
-              expanded={expandedSettings} 
+            {/* JSONLデータセット用の情報表示 */}
+            {isJsonlDataset && (
+              <Grid item xs={12}>
+                <Alert severity="info" sx={{ mb: 2 }} icon={<ChatIcon />}>
+                  選択したデータセットはマルチターン会話形式(JSONL)です。このデータセットはJSONL特有の処理で推論されます。
+                </Alert>
+              </Grid>
+            )}
+
+            <Accordion
+              expanded={expandedSettings}
               onChange={() => setExpandedSettings(!expandedSettings)}
               sx={{ mt: 2 }}
             >

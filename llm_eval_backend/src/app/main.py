@@ -57,8 +57,18 @@ db = get_db()
 # プロキシルーターを追加
 from app.api.endpoints import proxy
 
+# JSONLデータセット推論APIルーターをインポート
+from app.api.endpoints import jsonl_inference
+from app.api.endpoints import jsonl_inference_ui
+
 # APIルーターを追加（バージョン付きのRESTful API標準形式）
 app.include_router(api_router, prefix="/api/v1")
+
+# JSONLデータセット推論APIルーターを追加
+app.include_router(jsonl_inference.router, prefix="/api/v1")
+
+# JSONLデータセット推論UIを追加
+app.include_router(jsonl_inference_ui.router, prefix="/api/v1")
 
 # リクエスト・レスポンスのロギング
 @app.middleware("http")

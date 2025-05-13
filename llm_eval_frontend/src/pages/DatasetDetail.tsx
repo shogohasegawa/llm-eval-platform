@@ -409,12 +409,13 @@ const DatasetDetail: React.FC = () => {
         </Card>
       )}
 
+
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <Typography variant="h5" component="h2">
           データセットアイテム
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          {enhancedDataset.items.length > 0 
+          {enhancedDataset.items.length > 0
             ? `${(page - 1) * itemsPerPage + 1}-${Math.min(page * itemsPerPage, enhancedDataset.items.length)}件 / 全${enhancedDataset.items.length}件`
             : '0件'
           }

@@ -256,7 +256,7 @@ const Inferences: React.FC = () => {
   const handleSubmitInference = async (data: InferenceFormData) => {
     try {
       console.log('Original inference data from form:', data);
-      
+
       // データセットをより正確に送信（スネークケースとキャメルケースの両方）
       const inferenceData = {
         ...data,
@@ -274,23 +274,113 @@ const Inferences: React.FC = () => {
         top_p: data.topP || 1.0,
       };
       console.log('Prepared inference data for API call:', inferenceData);
-      
+
       // ネットワークリクエストを明示的にロギング
       console.log('Sending inference request to API...');
-      
+
       try {
-        // inferencesApiを使用
-        const result = await inferencesApi.createInference(inferenceData);
-        
+        let result;
+
+        // JSONL形式データセットの場合かどうかをログで確認
+        console.log('データセット情報をチェック:', data);
+        console.log('JSONLデータセットか？:', data.isJsonlDataset);
+
+        // データセット情報を取得（名前とタイプで検索）
+        const datasetName = data.datasetId.split('__')[0];
+        const datasetType = data.datasetId.split('__')[1] || '';
+        // constではなくletを使用して後で値を変更できるようにする
+        let selectedDataset = datasets.find(d => d.name === datasetName && d.type === datasetType);
+
+        console.log('取得したデータセット情報:', selectedDataset);
+
+        // データセットが見つからない場合にデバッグ情報を出力
+        if (!selectedDataset) {
+          console.log('データセット検索条件:', { name: datasetName, type: datasetType });
+          console.log('利用可能なデータセット:', datasets.map(d => ({ name: d.name, type: d.type, path: d.file_path })));
+        }
+
+        // 選択されたデータセットがJSONL形式かを再チェック
+        const isJsonlDataset = data.isJsonlDataset ||
+            (selectedDataset?.display_config?.file_format === 'jsonl') ||
+            (selectedDataset?.file_path?.endsWith('.jsonl'));
+
+        console.log('JSONLデータセット判定結果（再チェック後）:', isJsonlDataset);
+
+        // JSONL形式データセットの場合は専用APIを呼び出す
+        if (isJsonlDataset) {
+          console.log('Using JSONL inference API for this dataset');
+
+          // データセット情報が取得できない場合、再度データセットのパスを探す
+          if (!selectedDataset) {
+            console.log('データセット情報が取得できないため、名前で直接ファイルパスを探します');
+
+            // すべてのJSONLファイルを持つデータセットを取得
+            const jsonlDatasets = datasets.filter(d =>
+              d.file_path?.endsWith('.jsonl') ||
+              d.display_config?.file_format === 'jsonl' ||
+              d.additional_props?.format === 'jsonl'
+            );
+
+            console.log('利用可能なJSONLデータセット:', jsonlDatasets);
+
+            // 名前だけで一致を試みる（typeを無視）
+            const datasetByNameOnly = jsonlDatasets.find(d => d.name === datasetName);
+
+            if (datasetByNameOnly) {
+              console.log('名前のみで一致するデータセットが見つかりました:', datasetByNameOnly);
+              selectedDataset = datasetByNameOnly;
+            } else {
+              throw new Error(`データセット "${datasetName}" (タイプ: ${datasetType}) が見つかりません。JSONLデータセットの読み込みに失敗しました。`);
+            }
+          }
+
+          // ファイルパスがない場合はエラー
+          if (!selectedDataset.file_path) {
+            throw new Error('選択されたデータセットにファイルパスが設定されていません');
+          }
+
+          console.log('JSONLマルチターン推論に使用するデータセット:', selectedDataset);
+
+          // JSONLデータセット用のAPIリクエスト
+          const jsonlInferenceRequest = {
+            dataset_path: selectedDataset.file_path, // 実際のファイルパスを使用
+            provider_id: data.providerId,
+            model_id: data.modelId,
+            max_tokens: data.maxTokens || 512,
+            temperature: data.temperature || 0.7,
+            num_samples: data.numSamples
+            // システムメッセージはバックエンドのデフォルト値を使用
+          };
+
+          // JSONLデータセット推論API呼び出し
+          const response = await fetch('/api/v1/jsonl-inference', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(jsonlInferenceRequest)
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || 'APIエラーが発生しました');
+          }
+
+          result = await response.json();
+        } else {
+          // 通常の推論API呼び出し
+          result = await inferencesApi.createInference(inferenceData);
+        }
+
         console.log('API response data:', result);
-        
+
         // 推論IDの抽出（レスポンス形式によって変わる可能性あり）
-        const inferenceId = result.id || (result.inference && result.inference.id);
+        const inferenceId = result.id || (result.inference && result.inference.id) || result.job_id;
         console.log('Created inference ID:', inferenceId);
-        
+
         // 正常処理を続行
         handleCloseFormDialog();
-        
+
         // 成功メッセージを表示
         // Contextのimplementaionによってはエラーが起きる可能性があるため条件付きで実行
         try {
@@ -300,7 +390,7 @@ const Inferences: React.FC = () => {
           console.log('推論が正常に作成されました:', result.name || '名称なし');
           // フォールバック：通常のエラー表示は使わない
         }
-        
+
         // 推論一覧を明示的に再取得 - まず即時再取得
         console.log('Refreshing inferences list immediately...');
         await refetchInferences();

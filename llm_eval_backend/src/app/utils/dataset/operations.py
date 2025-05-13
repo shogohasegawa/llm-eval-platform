@@ -126,17 +126,29 @@ def _get_datasets_from_dir(directory: Path, dataset_type: str) -> List[DatasetMe
 
                     # JSONLメタデータを作成（最初の行または全体をメタデータとして使用）
                     # JSONLファイルの場合は全体をリストとして扱う
-                    meta_data = {}
+                    meta_data = {
+                        "is_jsonl": True,  # JSONLフラグを追加
+                        "file_format": "jsonl"  # ファイル形式を明示的に設定
+                    }
                     if data and isinstance(data[0], dict):
                         # 最初の行から基本情報を取得
-                        meta_data = data[0].copy() if "category" in data[0] else {}
+                        meta_data.update(data[0].copy() if "category" in data[0] else {})
                 else:
                     # 通常のJSONファイル
                     with open(file_path, "r", encoding="utf-8") as f:
                         data = json.load(f)
 
                     # 通常のJSONファイルの場合
-                    meta_data = data if isinstance(data, dict) else {}
+                    if isinstance(data, dict):
+                        meta_data = data.copy()
+                        # ファイル形式情報を追加
+                        meta_data["is_jsonl"] = False
+                        meta_data["file_format"] = "json"
+                    else:
+                        meta_data = {
+                            "is_jsonl": False,
+                            "file_format": "json"
+                        }
 
                 # ファイル名からデータセット名を取得
                 dataset_name = file_path.stem
@@ -159,6 +171,17 @@ def _get_datasets_from_dir(directory: Path, dataset_type: str) -> List[DatasetMe
                 # ファイル形式の判定
                 is_jsonl = file_path.suffix.lower() == '.jsonl'
 
+                # ファイル形式に基づく表示設定
+                display_config = {
+                    "file_format": "jsonl" if is_jsonl else "json",
+                    "is_jsonl": is_jsonl,
+                    "labels": {
+                        "primary": "質問",
+                        "secondary": "指示",
+                        "tertiary": "入力"
+                    } if is_jsonl else None
+                }
+
                 # データセットメタデータを作成
                 metadata = DatasetMetadata(
                     name=meta_data.get("name", dataset_name) if isinstance(meta_data, dict) else dataset_name,
@@ -167,7 +190,8 @@ def _get_datasets_from_dir(directory: Path, dataset_type: str) -> List[DatasetMe
                     created_at=datetime.fromtimestamp(file_path.stat().st_mtime),
                     item_count=item_count,
                     file_path=str(file_path),
-                    additional_props={"format": "jsonl" if is_jsonl else "json"}
+                    additional_props={"format": "jsonl" if is_jsonl else "json"},
+                    display_config=display_config  # 表示設定を追加
                 )
                 datasets.append(metadata)
             except Exception as e:

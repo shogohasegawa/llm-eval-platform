@@ -202,6 +202,15 @@ async def create_inference(
         if dataset_type:
             dataset_info = get_dataset_by_name(dataset_name, dataset_type)
             logger.info(f"データセット取得（タイプ指定あり）: {dataset_name}, タイプ: {dataset_type}, 結果: {dataset_info is not None}")
+
+            # データセットがJSONL形式かどうかをチェック
+            if dataset_info and dataset_info.get("file_path", "").endswith(".jsonl"):
+                logger.info(f"JSONLデータセットが検出されました: {dataset_info.get('file_path')}")
+                # このデータセットはJSONLフォーマットなので専用APIへのリダイレクトを推奨
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"JSONLデータセット '{dataset_name}' は標準の評価処理では対応していません。JSONLマルチターン推論APIを使用してください。"
+                )
         
         # タイプ指定が無いか取得に失敗した場合は、タイプなしで再試行
         if not dataset_info:
@@ -210,6 +219,15 @@ async def create_inference(
                 # 取得できた場合はそのタイプを記録
                 dataset_type = dataset_info["metadata"].type
                 logger.info(f"データセット取得（タイプ指定なし）: {dataset_name}, 検出タイプ: {dataset_type}")
+
+                # JSONLデータセットチェック（タイプなしで取得した場合も）
+                if dataset_info.get("file_path", "").endswith(".jsonl"):
+                    logger.info(f"JSONLデータセットが検出されました: {dataset_info.get('file_path')}")
+                    # このデータセットはJSONLフォーマットなので専用APIへのリダイレクトを推奨
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"JSONLデータセット '{dataset_name}' は標準の評価処理では対応していません。JSONLマルチターン推論APIを使用してください。"
+                    )
         
         # それでも取得できない場合はエラー
         if not dataset_info:
@@ -819,6 +837,15 @@ async def run_inference(
         if dataset_type:
             dataset_info = get_dataset_by_name(dataset_name, dataset_type)
             logger.info(f"データセット取得（タイプ指定あり）: {dataset_name}, タイプ: {dataset_type}, 結果: {dataset_info is not None}")
+
+            # データセットがJSONL形式かどうかをチェック
+            if dataset_info and dataset_info.get("file_path", "").endswith(".jsonl"):
+                logger.info(f"JSONLデータセットが検出されました: {dataset_info.get('file_path')}")
+                # このデータセットはJSONLフォーマットなので専用APIへのリダイレクトを推奨
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"JSONLデータセット '{dataset_name}' は標準の評価処理では対応していません。JSONLマルチターン推論APIを使用してください。"
+                )
         
         # タイプ指定が無いか取得に失敗した場合は、タイプなしで再試行
         if not dataset_info:
@@ -827,6 +854,15 @@ async def run_inference(
                 # 取得できた場合はそのタイプを記録
                 dataset_type = dataset_info["metadata"].type
                 logger.info(f"データセット取得（タイプ指定なし）: {dataset_name}, 検出タイプ: {dataset_type}")
+
+                # JSONLデータセットチェック（タイプなしで取得した場合も）
+                if dataset_info.get("file_path", "").endswith(".jsonl"):
+                    logger.info(f"JSONLデータセットが検出されました: {dataset_info.get('file_path')}")
+                    # このデータセットはJSONLフォーマットなので専用APIへのリダイレクトを推奨
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"JSONLデータセット '{dataset_name}' は標準の評価処理では対応していません。JSONLマルチターン推論APIを使用してください。"
+                    )
         
         # それでも取得できない場合はエラー
         if not dataset_info:

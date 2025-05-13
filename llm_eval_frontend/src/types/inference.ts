@@ -72,6 +72,8 @@ export interface InferenceFormData {
   maxTokens?: number;    // 最大トークン数（デフォルト: 512）
   temperature?: number;  // 温度パラメータ（デフォルト: 0.7）
   topP?: number;         // Top-pサンプリング（デフォルト: 1.0）
+  // JSONL形式データセット用
+  isJsonlDataset?: boolean; // JSONLデータセットフラグ
   // バックエンドAPI用のスネークケース形式フィールド
   dataset_type?: string; // データセットタイプ（'test' または 'n_shot'）
 }

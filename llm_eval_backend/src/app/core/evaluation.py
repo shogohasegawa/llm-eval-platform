@@ -737,7 +737,14 @@ async def run_evaluation(
     
     # 最終的な基本名を記録
     logger.info(f"【デバッグ】最終的な base_name: '{base_name}'")
-    
+
+    # JSONLデータセットの場合は.jsonl拡張子を確認し、通常のJSONファイルへのパスを試行する前に処理
+    jsonl_path = Path(str(dataset_path).replace('.json', '.jsonl'))
+    if jsonl_path.exists():
+        logger.info(f"JSONLデータセットが見つかりました: {jsonl_path}")
+        logger.warning(f"JSONLデータセットは標準の評価処理では対応していません: {jsonl_path}")
+        raise FileNotFoundError(f"JSONLデータセット {jsonl_path} は標準の評価処理では対応していません。推論画面からマルチターン推論APIを使用してください。")
+
     logger.info(f"Looking for dataset at: {dataset_path}")
     batch_size = settings.BATCH_SIZE
 
