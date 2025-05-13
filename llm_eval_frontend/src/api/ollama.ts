@@ -5,8 +5,6 @@
 import { apiClient } from './client';
 import { OllamaModelDownload } from '../types/ollama';
 
-// 直接Ollamaサーバーにアクセスする場合は、proxy-ollama.tsを使用してください
-
 // 共通のマッピング関数
 const mapDownloadItem = (item: any): OllamaModelDownload => ({
   id: item.id,

@@ -1,6 +1,6 @@
 """
 プロキシエンドポイント
-内部サービス（MLflow, Ollama）へのアクセスをAPIを経由して行うためのエンドポイント
+内部サービス（MLflow）へのアクセスをAPIを経由して行うためのエンドポイント
 """
 from fastapi import APIRouter, Request, Response, HTTPException
 import httpx
@@ -12,23 +12,18 @@ import logging
 router = APIRouter()
 logger = logging.getLogger("llmeval")
 
-# プロキシ設定
-OLLAMA_BASE_URLS = [
-    os.environ.get("OLLAMA_BASE_URL"),
-    os.environ.get("OLLAMA_EXTERNAL_URL")
-]
-
-# デバッグログ出力
-logger.info(f"Ollama接続先一覧: {OLLAMA_BASE_URLS}")
-logger.info(f"設定値: OLLAMA_BASE_URL={os.environ.get('OLLAMA_BASE_URL')}, OLLAMA_EXTERNAL_URL={os.environ.get('OLLAMA_EXTERNAL_URL')}")
-
 # MLflow接続URLの設定（複数の候補から有効なものを選択）
 MLFLOW_BASE_URLS = [
-    os.environ.get("MLFLOW_HOST_URI"),                # 通常のMLflow接続URI
+    os.environ.get("MLFLOW_HOST_URI"),                # 内部接続用URI（バックエンドからMLflowコンテナへ）
     "http://llm-mlflow-tracking:5000",                # Dockerネットワーク内部でのコンテナ名
-    "http://localhost:5001",                          # ローカル開発用のURI
-    os.environ.get("LLMEVAL_MLFLOW_EXTERNAL_URI")     # 外部接続用URI
+    os.environ.get("MLFLOW_EXTERNAL_URI"),            # 外部接続用URI (全システム共通の外部URL)
+    "http://localhost:5001"                           # ローカル開発用のURI（フォールバック）
 ]
+
+# 後方互換性のためのフォールバック処理(必要に応じて削除可)
+if os.environ.get("LLMEVAL_MLFLOW_EXTERNAL_URI") and not os.environ.get("MLFLOW_EXTERNAL_URI"):
+    MLFLOW_BASE_URLS.append(os.environ.get("LLMEVAL_MLFLOW_EXTERNAL_URI"))
+    logger.info(f"LLMEVAL_MLFLOW_EXTERNAL_URIが設定されていますが、MLFLOW_EXTERNAL_URIへの移行を推奨します")
 
 # 空の値をフィルタリング
 MLFLOW_BASE_URLS = [url for url in MLFLOW_BASE_URLS if url]
@@ -40,76 +35,6 @@ logger.info(f"MLflow接続候補: {MLFLOW_BASE_URLS}")
 MLFLOW_BASE_URL = MLFLOW_BASE_URLS[0] if MLFLOW_BASE_URLS else "http://llm-mlflow-tracking:5000"
 logger.info(f"選択されたMLflow接続先: {MLFLOW_BASE_URL}")
 
-@router.get("/proxy-ollama/{path:path}")
-@router.post("/proxy-ollama/{path:path}")
-@router.put("/proxy-ollama/{path:path}")
-@router.delete("/proxy-ollama/{path:path}")
-async def proxy_ollama(request: Request, path: str):
-    """
-    Ollamaサーバーへのリクエストをプロキシする
-    複数の接続先を試し、最初に成功した接続を使用する
-    """
-    # リクエストボディと全てのクエリパラメータ・ヘッダーを転送
-    body = await request.body()
-    
-    # 設定されているOllama URLを順番に試す
-    for base_url in [url for url in OLLAMA_BASE_URLS if url]:
-        target_url = f"{base_url}/{path}"
-        logger.info(f"Proxying Ollama request to: {target_url}")
-        
-        try:
-            async with httpx.AsyncClient() as client:
-                # リクエストヘッダーをコピーするが、ホストヘッダーは除外
-                headers = dict(request.headers)
-                headers.pop("host", None)
-                
-                response = await client.request(
-                    method=request.method,
-                    url=target_url,
-                    content=body,
-                    headers=headers,
-                    params=dict(request.query_params),
-                    timeout=60.0
-                )
-                
-                # レスポンスヘッダーをコピー（Content-Lengthなどの特定ヘッダーは除外）
-                resp_headers = dict(response.headers)
-                resp_headers.pop("content-length", None)
-                resp_headers.pop("transfer-encoding", None)
-                
-                # ストリーミングレスポンスの場合
-                if "content-type" in resp_headers and "stream" in resp_headers.get("content-type", ""):
-                    return StreamingResponse(
-                        response.aiter_bytes(),
-                        status_code=response.status_code,
-                        headers=resp_headers
-                    )
-                
-                # 通常のレスポンス
-                return Response(
-                    content=response.content,
-                    status_code=response.status_code,
-                    headers=resp_headers
-                )
-        except Exception as e:
-            logger.error(f"Error proxying to {target_url}: {e}")
-            continue
-    
-    # すべてのURLが失敗した場合
-    logger.error(f"All Ollama proxy attempts failed for path: {path}")
-    raise HTTPException(
-        status_code=503,
-        detail=f"Failed to connect to Ollama server. Please check if the service is running."
-    )
-
-# ルートパスへのプロキシ（/proxy-ollama/ -> http://ollama:11434/）
-@router.get("/proxy-ollama/")
-@router.post("/proxy-ollama/")
-async def proxy_ollama_root(request: Request):
-    """
-    Ollamaサーバーのルートパスへのリクエストをプロキシする
-    """
-    return await proxy_ollama(request, "")
 
 @router.get("/proxy-mlflow/{path:path}")
 @router.post("/proxy-mlflow/{path:path}")
