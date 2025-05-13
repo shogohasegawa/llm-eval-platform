@@ -190,6 +190,10 @@ def _get_datasets_from_dir(directory: Path, dataset_type: str) -> List[DatasetMe
                     created_at=datetime.fromtimestamp(file_path.stat().st_mtime),
                     item_count=item_count,
                     file_path=str(file_path),
+                    # データセットレベルの属性を取得
+                    instruction=meta_data.get("instruction") if isinstance(meta_data, dict) else None,
+                    metrics=meta_data.get("metrics") if isinstance(meta_data, dict) else None,
+                    output_length=meta_data.get("output_length") if isinstance(meta_data, dict) else None,
                     additional_props={"format": "jsonl" if is_jsonl else "json"},
                     display_config=display_config  # 表示設定を追加
                 )
@@ -304,6 +308,10 @@ def get_dataset_by_path(file_path: str) -> Optional[Dict[str, Any]]:
             created_at=datetime.fromtimestamp(path.stat().st_mtime),
             item_count=item_count,
             file_path=file_path,
+            # データセットレベルの属性を取得して追加
+            instruction=meta_data.get("instruction") if isinstance(meta_data, dict) else None,
+            metrics=meta_data.get("metrics") if isinstance(meta_data, dict) else None,
+            output_length=meta_data.get("output_length") if isinstance(meta_data, dict) else None,
             additional_props={"format": "jsonl" if is_jsonl else "json"}
         )
 
