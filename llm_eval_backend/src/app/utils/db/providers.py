@@ -78,23 +78,32 @@ class ProviderRepository:
     def get_all_providers(self) -> List[Dict[str, Any]]:
         """
         すべてのプロバイダーを取得
-        
+
         Returns:
-            プロバイダーのリスト
+            プロバイダーのリスト（各プロバイダーにはmodel_countフィールドが含まれる）
         """
         query = """
         SELECT id, name, type, endpoint, api_key, is_active, created_at, updated_at
         FROM providers
         ORDER BY created_at DESC
         """
-        
+
         try:
             providers = self.db.fetch_all(query)
-            
-            # is_activeをブール値に変換
+
+            # is_activeをブール値に変換し、各プロバイダーのモデル数を取得
             for provider in providers:
                 provider["is_active"] = bool(provider["is_active"])
-            
+
+                # モデル数を取得して追加
+                model_count_query = """
+                SELECT COUNT(*) as model_count
+                FROM models
+                WHERE provider_id = ?
+                """
+                result = self.db.fetch_one(model_count_query, (provider["id"],))
+                provider["model_count"] = result["model_count"] if result else 0
+
             return providers
         except Exception as e:
             logger.error(f"プロバイダー取得エラー: {e}")
@@ -108,7 +117,7 @@ class ProviderRepository:
             provider_id: プロバイダーID
 
         Returns:
-            プロバイダー情報またはNone
+            プロバイダー情報またはNone（モデル数を含む）
         """
         query = """
         SELECT id, name, type, endpoint, api_key, is_active, created_at, updated_at
@@ -123,6 +132,15 @@ class ProviderRepository:
                 # is_activeをブール値に変換
                 provider["is_active"] = bool(provider["is_active"])
 
+                # モデル数を取得して追加
+                model_count_query = """
+                SELECT COUNT(*) as model_count
+                FROM models
+                WHERE provider_id = ?
+                """
+                result = self.db.fetch_one(model_count_query, (provider_id,))
+                provider["model_count"] = result["model_count"] if result else 0
+
             return provider
         except Exception as e:
             logger.error(f"プロバイダー取得エラー: {e}")
@@ -136,7 +154,7 @@ class ProviderRepository:
             name_or_type: プロバイダー名またはタイプ（例: "openai", "anthropic"など）
 
         Returns:
-            プロバイダー情報またはNone
+            プロバイダー情報またはNone（モデル数を含む）
         """
         query = """
         SELECT id, name, type, endpoint, api_key, is_active, created_at, updated_at
@@ -151,6 +169,15 @@ class ProviderRepository:
             if provider:
                 # is_activeをブール値に変換
                 provider["is_active"] = bool(provider["is_active"])
+
+                # モデル数を取得して追加
+                model_count_query = """
+                SELECT COUNT(*) as model_count
+                FROM models
+                WHERE provider_id = ?
+                """
+                result = self.db.fetch_one(model_count_query, (provider["id"],))
+                provider["model_count"] = result["model_count"] if result else 0
 
             return provider
         except Exception as e:

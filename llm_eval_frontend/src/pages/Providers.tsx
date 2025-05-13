@@ -60,11 +60,10 @@ const Providers: React.FC = () => {
   
   // プロバイダの追加/編集ダイアログを開く
   const handleOpenProviderDialog = (provider?: Provider) => {
-    if (provider) {
-      setEditingProvider(provider);
-    } else {
-      setEditingProvider(null);
-    }
+    console.log('Opening provider dialog with:', provider);
+    // 編集か新規作成かに関わらず、まずステートを更新
+    setEditingProvider(provider || null);
+    // 次にダイアログを開く
     setProviderDialogOpen(true);
   };
   

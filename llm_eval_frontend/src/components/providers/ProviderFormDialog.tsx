@@ -1,12 +1,12 @@
-import React, { useState } from 'react';
-import { 
-  Dialog, 
-  DialogTitle, 
-  DialogContent, 
-  DialogActions, 
-  Button, 
-  TextField, 
-  FormControl, 
+import React, { useState, useEffect } from 'react';
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  TextField,
+  FormControl,
   FormControlLabel,
   Switch,
   Grid,
@@ -44,6 +44,14 @@ const ProviderFormDialog: React.FC<ProviderFormDialogProps> = ({
   // フォームの状態
   const [formData, setFormData] = useState<ProviderFormData>(initialData || defaultData);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // initialDataが変更されたらフォームデータを更新
+  useEffect(() => {
+    if (initialData) {
+      console.log('ProviderFormDialog - Updating initialData:', initialData);
+      setFormData(initialData);
+    }
+  }, [initialData]);
 
   // フォームリセット
   const resetForm = () => {
@@ -104,6 +112,11 @@ const ProviderFormDialog: React.FC<ProviderFormDialogProps> = ({
       onSubmit(formData);
     }
   };
+
+  // openステータスの変更をログ
+  useEffect(() => {
+    console.log('ProviderFormDialog - Dialog open state:', open, 'with initialData:', initialData);
+  }, [open, initialData]);
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>

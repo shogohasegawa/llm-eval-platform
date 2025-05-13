@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { 
-  Box, 
-  Typography, 
-  Button, 
-  Grid, 
-  Paper, 
+import {
+  Box,
+  Typography,
+  Button,
+  Grid,
+  Paper,
   CircularProgress,
   Alert,
   Divider,
@@ -14,7 +14,7 @@ import {
   ListItemText
 } from '@mui/material';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useModel, useProvider } from '../hooks/useProviders';
+import { useModel, useProvider, useUpdateModel } from '../hooks/useProviders';
 import OllamaModelDownloader from '../components/providers/OllamaModelDownloader';
 import ModelFormDialog from '../components/providers/ModelFormDialog';
 import { ModelFormData } from '../types/provider';
@@ -55,24 +55,33 @@ const ModelDetail: React.FC = () => {
     setError(`モデルの取得に失敗しました: ${modelError.message}`);
   }
   
+  // モデル更新用のミューテーション
+  const updateModel = useUpdateModel(model?.providerId || '', modelId);
+
   // ダイアログを開く
   const handleOpenFormDialog = () => {
+    console.log('Opening model form dialog');
+    // 同期的にダイアログを開く
     setFormDialogOpen(true);
   };
-  
+
   // ダイアログを閉じる
   const handleCloseFormDialog = () => {
     setFormDialogOpen(false);
   };
-  
+
   // モデルの編集を実行
   const handleSubmitModel = async (data: ModelFormData) => {
-    // 実際の編集処理はここに追加
-    console.log('Edit model data:', data);
-    handleCloseFormDialog();
-    
-    // ページをリロードするかクエリを無効化して最新データを取得
-    window.location.reload();
+    try {
+      await updateModel.mutateAsync(data);
+      handleCloseFormDialog();
+      // 更新成功
+      setError('モデルが正常に更新されました。');
+    } catch (err) {
+      if (err instanceof Error) {
+        setError(`モデルの更新に失敗しました: ${err.message}`);
+      }
+    }
   };
   
   // モデル一覧に戻る
@@ -299,7 +308,7 @@ const ModelDetail: React.FC = () => {
           isActive: model.isActive,
           providerId: model.providerId
         }}
-        isSubmitting={false}
+        isSubmitting={updateModel.isPending}
         providerId={model.providerId}
       />
     </Box>

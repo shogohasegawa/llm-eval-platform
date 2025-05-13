@@ -66,6 +66,17 @@ const ModelFormDialog: React.FC<ModelFormDialogProps> = ({
     initialData?.parameters ? JSON.stringify(initialData.parameters, null, 2) : '{}'
   );
 
+  // initialDataが変更されたらフォームデータを更新
+  useEffect(() => {
+    if (initialData) {
+      console.log('ModelFormDialog - Updating initialData:', initialData);
+      setFormData(initialData);
+      setParametersString(
+        initialData.parameters ? JSON.stringify(initialData.parameters, null, 2) : '{}'
+      );
+    }
+  }, [initialData]);
+
   // 選択されたプロバイダの情報
   const selectedProvider = formData.providerId 
     ? providers?.find(p => p.id === formData.providerId) 
@@ -224,6 +235,11 @@ const ModelFormDialog: React.FC<ModelFormDialogProps> = ({
       onSubmit(submitData);
     }
   };
+
+  // openステータスの変更をログ
+  useEffect(() => {
+    console.log('ModelFormDialog - Dialog open state:', open, 'with initialData:', initialData);
+  }, [open, initialData]);
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>

@@ -51,6 +51,7 @@ class Provider(ProviderBase):
     id: str = Field(..., description="プロバイダーID")
     created_at: str = Field(..., description="作成日時")
     updated_at: str = Field(..., description="更新日時")
+    model_count: Optional[int] = Field(0, description="プロバイダーに関連付けられたモデル数")
 
     class Config:
         """Pydantic設定"""

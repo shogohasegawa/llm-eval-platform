@@ -15,7 +15,7 @@ import { useTheme } from '@mui/material/styles';
 
 /**
  * リーダーボードページ
- * 
+ *
  * MLflow UIを埋め込み表示します。
  */
 const Leaderboard: React.FC = () => {
@@ -28,16 +28,38 @@ const Leaderboard: React.FC = () => {
   const [showError, setShowError] = useState(false);
   const [messageType, setMessageType] = useState<'error' | 'success' | 'info'>('error');
 
-  // MLflow UIの直接URL (ブラウザからアクセスするためのURL)
-  const getMlflowUrl = () => {
-    return import.meta.env.VITE_MLFLOW_DIRECT_URL || 'http://localhost:5001';
-  };
+  /**
+   * MLflow関連のURLを生成する関数
+   * システム全体で一貫した接続設定を使用するために統合
+   */
+  const getMlflowEndpoints = () => {
+    // ベースとなるAPI URL
+    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ||
+      (import.meta.env.DEV ? 'http://localhost:8001' : 'http://llm-api-backend:8000');
 
-  // コンテナ内部でのMLflow接続URL（APIサーバー用、テスト用）
-  const getInternalMlflowUrl = () => {
-    const mlflowHost = import.meta.env.VITE_MLFLOW_INTERNAL_HOST || 'llm-mlflow-tracking';
-    const mlflowPort = import.meta.env.VITE_MLFLOW_INTERNAL_PORT || '5000';
-    return `http://${mlflowHost}:${mlflowPort}`;
+    // 各種エンドポイント
+    // 外部URLは環境変数から取得、未設定の場合はデフォルト値を使用
+    // VITE_MLFLOW_DIRECT_URLはMLFLOW_EXTERNAL_URIから設定される共通の外部URI
+    const directUrl = import.meta.env.VITE_MLFLOW_DIRECT_URL || 'http://localhost:5001';
+    const proxyEndpoint = import.meta.env.VITE_MLFLOW_PROXY_ENDPOINT || '/proxy-mlflow';
+
+    // MLflowの内部設定（デバッグ情報用、実際の接続には使用されない）
+    const mlflowHost = import.meta.env.MLFLOW_HOST || 'llm-mlflow-tracking';
+    const mlflowPort = import.meta.env.MLFLOW_PORT || '5000';
+
+    return {
+      // ブラウザからの直接アクセス用URL
+      directUrl,
+
+      // APIサーバー経由のプロキシURL
+      proxyUrl: `${apiBaseUrl}${proxyEndpoint}`,
+
+      // 標準MLflow APIエンドポイント (接続テスト用)
+      mlflowApiEndpoint: '/api/2.0/mlflow/experiments/list',
+
+      // バックエンド内部接続用URL（デバッグ情報用）
+      internalUrl: `http://${mlflowHost}:${mlflowPort}`
+    };
   };
 
   // 外部リンクを新しいタブで開く
@@ -47,83 +69,129 @@ const Leaderboard: React.FC = () => {
 
   // MLflowを直接開く
   const openMlflow = () => {
-    openExternalLink(getMlflowUrl());
+    const { directUrl } = getMlflowEndpoints();
+    openExternalLink(directUrl);
   };
 
-  // APIサーバー経由のプロキシURL
-  const getProxyMlflowUrl = () => {
-    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ||
-      (import.meta.env.DEV ? 'http://localhost:8001' : 'http://llm-api-backend:8000');
-    const proxyEndpoint = import.meta.env.VITE_MLFLOW_PROXY_ENDPOINT || '/proxy-mlflow';
-
-    return `${apiBaseUrl}${proxyEndpoint}`;
-  };
-
-  // MLflowステータスチェックURL
-  const getMlflowStatusUrl = () => {
-    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ||
-      (import.meta.env.DEV ? 'http://localhost:8001' : 'http://llm-api-backend:8000');
-    const statusEndpoint = import.meta.env.VITE_MLFLOW_STATUS_ENDPOINT || '/mlflow-status';
-
-    return `${apiBaseUrl}${statusEndpoint}`;
-  };
-
-  // MLflowへの接続をテスト
+  // MLflowへの接続をテスト（シンプル化したアプローチ - 標準APIエンドポイントを使用）
   const testMlflowConnection = async () => {
     setLoading(true);
     try {
-      // 開発環境または環境変数設定に基づき、API検証をスキップするかどうか判断
-      const skipApiCheck = import.meta.env.VITE_DEV_SKIP_API_CHECK === 'true' || import.meta.env.DEV;
-      const forceMlflowOk = import.meta.env.VITE_DEV_FORCE_MLFLOW_OK === 'true' || import.meta.env.DEV;
+      // 環境変数設定を明示的にログ出力（デバッグ用）
+      console.log('🔍 環境変数設定値:', {
+        VITE_DEV_SKIP_API_CHECK: import.meta.env.VITE_DEV_SKIP_API_CHECK,
+        VITE_DEV_FORCE_MLFLOW_OK: import.meta.env.VITE_DEV_FORCE_MLFLOW_OK,
+        DEV: import.meta.env.DEV
+      });
 
-      // 開発環境または設定に基づき強制的に成功とみなす
+      // 環境変数設定に基づき、API検証をスキップするかどうか判断
+      const skipApiCheckValue = import.meta.env.VITE_DEV_SKIP_API_CHECK;
+      const forceMlflowOkValue = import.meta.env.VITE_DEV_FORCE_MLFLOW_OK;
+      const skipApiCheck = skipApiCheckValue === 'true';
+      const forceMlflowOk = forceMlflowOkValue === 'true';
+
+      // スキップフラグをログ出力
+      console.log('⚙️ 接続チェック設定:', {
+        skipApiCheck,
+        forceMlflowOk,
+        rawSkipValue: skipApiCheckValue,
+        rawForceValue: forceMlflowOkValue
+      });
+
+      // MLflowエンドポイント情報を取得
+      const mlflowEndpoints = getMlflowEndpoints();
+
+      // 環境変数設定に基づき接続チェックをスキップするか判断
       if (skipApiCheck || forceMlflowOk) {
-        console.log('MLflow API接続チェックをスキップします（開発環境または設定による）');
+        console.log('⚠️ MLflow API接続チェックをスキップします（skipApiCheck=' + skipApiCheck + ', forceMlflowOk=' + forceMlflowOk + '）');
         setMlflowDirectAccessOk(true);
         setMlflowProxyAccessOk(true);
-        setMlflowStatus({ status: 'ok', message: '接続チェックスキップ（環境設定による）' });
+        setMlflowStatus({ status: 'ok', message: '接続チェックスキップ（開発モード）' });
       } else {
-        // 本番環境での検証
-        setMlflowDirectAccessOk(true); // 単純化のためtrueに設定
+        console.log('✅ MLflow API接続チェックを実行します');
 
-        // APIサーバー経由でMLflowの状態を確認
+        // 1. まず直接接続を試みる（標準MLflow APIエンドポイント使用）
         try {
-          const statusUrl = getMlflowStatusUrl();
-          console.log('MLflowステータス確認URL:', statusUrl);
-          const statusResponse = await fetch(statusUrl);
+          const mlflowApiEndpoint = `${mlflowEndpoints.directUrl}${mlflowEndpoints.mlflowApiEndpoint}`;
+          console.log('MLflow直接接続テスト:', mlflowApiEndpoint);
 
-          if (statusResponse.ok) {
-            const statusData = await statusResponse.json();
-            console.log('MLflowステータス:', statusData);
-            setMlflowStatus(statusData);
+          const directResponse = await fetch(mlflowApiEndpoint);
 
-            // プロキシアクセスの可否を設定
-            setMlflowProxyAccessOk(statusData.status === 'ok');
-
-            if (statusData.status !== 'ok') {
-              // エラーメッセージを表示しない（直接アクセスを推奨するため）
-              console.warn('MLflowプロキシ接続エラー:', statusData);
-            }
+          if (directResponse.ok) {
+            console.log('MLflow直接接続成功！');
+            setMlflowDirectAccessOk(true);
+            setMlflowProxyAccessOk(false); // プロキシは使用しない
+            setMlflowStatus({
+              status: 'ok',
+              message: 'MLflowに直接接続しています',
+              directOnly: true
+            });
           } else {
-            console.error('MLflowステータス取得エラー:', statusResponse.statusText);
-            setMlflowProxyAccessOk(false);
+            console.error('MLflow直接接続エラー:', directResponse.statusText);
+            setMlflowDirectAccessOk(false);
+
+            // 2. 直接接続に失敗した場合、プロキシ接続を試みる
+            console.log('直接接続に失敗しました。プロキシ経由での接続を試みます。');
+            await testMlflowProxyConnection(mlflowEndpoints);
           }
-        } catch (error) {
-          console.error('MLflowステータス取得エラー:', error);
-          // プロキシアクセスは不可
-          setMlflowProxyAccessOk(false);
+        } catch (directError) {
+          console.error('MLflow直接接続例外:', directError);
+          setMlflowDirectAccessOk(false);
+
+          // 直接接続で例外が発生した場合も、プロキシ接続を試みる
+          console.log('直接接続で例外が発生しました。プロキシ経由での接続を試みます。');
+          await testMlflowProxyConnection(mlflowEndpoints);
         }
       }
 
-      // URLを出力（デバッグ用）
-      console.log('MLflowアクセスURL（ブラウザ用）:', getMlflowUrl());
-      console.log('MLflowアクセスURL（内部用）:', getInternalMlflowUrl());
-      console.log('MLflowプロキシURL:', getProxyMlflowUrl());
+      // URL情報を出力（デバッグ用）
+      console.log('MLflow接続情報:', mlflowEndpoints);
     } catch (error) {
       console.error('MLflow接続テスト全体エラー:', error);
-      // エラーメッセージを表示しない（ユーザーを混乱させないため）
+      setMlflowDirectAccessOk(false);
+      setMlflowProxyAccessOk(false);
+      setMlflowStatus({
+        status: 'error',
+        message: '接続エラー: MLflowサーバーに接続できません'
+      });
     } finally {
       setLoading(false);
+    }
+  };
+
+  // プロキシ経由でのMLflow接続をテスト（ヘルパー関数）
+  const testMlflowProxyConnection = async (mlflowEndpoints: any) => {
+    try {
+      // プロキシエンドポイント経由でMLflowのexperiments/listにアクセス
+      const proxyApiEndpoint = `${mlflowEndpoints.proxyUrl}${mlflowEndpoints.mlflowApiEndpoint}`;
+      console.log('MLflowプロキシ接続テスト:', proxyApiEndpoint);
+
+      const proxyResponse = await fetch(proxyApiEndpoint);
+
+      if (proxyResponse.ok) {
+        console.log('MLflowプロキシ接続成功！');
+        setMlflowProxyAccessOk(true);
+        setMlflowDirectAccessOk(false); // 直接接続は使用しない
+        setMlflowStatus({
+          status: 'ok',
+          message: 'MLflowにプロキシ経由で接続しています',
+          proxyOnly: true
+        });
+      } else {
+        console.error('MLflowプロキシ接続エラー:', proxyResponse.statusText);
+        setMlflowProxyAccessOk(false);
+        setMlflowStatus({
+          status: 'error',
+          message: `プロキシ接続エラー: ${proxyResponse.status} ${proxyResponse.statusText}`
+        });
+      }
+    } catch (proxyError) {
+      console.error('MLflowプロキシ接続例外:', proxyError);
+      setMlflowProxyAccessOk(false);
+      setMlflowStatus({
+        status: 'error',
+        message: `プロキシ接続例外: ${proxyError}`
+      });
     }
   };
 
@@ -134,29 +202,6 @@ const Leaderboard: React.FC = () => {
 
   return (
     <Box sx={{ p: 3, height: 'calc(100vh - 70px)', display: 'flex', flexDirection: 'column' }}>
-      <Box sx={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center',
-        mb: 2
-      }}>
-        <Typography variant="h4" component="h1">
-          リーダーボード (MLflow)
-        </Typography>
-        
-        <Box sx={{ display: 'flex', gap: 2 }}>
-          <Button
-            variant="contained"
-            color="primary"
-            startIcon={<OpenInNewIcon />}
-            onClick={openMlflow}
-            size="large"
-          >
-            MLflowダッシュボードを開く
-          </Button>
-        </Box>
-      </Box>
-
       <Divider sx={{ mb: 2 }} />
       
       <Paper 
@@ -237,7 +282,7 @@ const Leaderboard: React.FC = () => {
         }}>
           {mlflowDirectAccessOk === true ? (
             <iframe
-              src={getMlflowUrl()}
+              src={getMlflowEndpoints().directUrl}
               title="MLflow Dashboard"
               style={{
                 width: '100%',
@@ -295,13 +340,13 @@ const Leaderboard: React.FC = () => {
                       fontSize: '0.9rem',
                       fontWeight: 'medium'
                     }}>
-                      {getMlflowUrl()}
+                      {getMlflowEndpoints().directUrl}
                     </Box>
                     <Button
                       variant="text"
                       size="small"
                       onClick={() => {
-                        navigator.clipboard.writeText(getMlflowUrl());
+                        navigator.clipboard.writeText(getMlflowEndpoints().directUrl);
                         setErrorMessage('URLをクリップボードにコピーしました');
                         setMessageType('success');
                         setShowError(true);

@@ -10,8 +10,8 @@ LLM評価プラットフォームは、以下の主要コンポーネントか�
 |----------------|------|-------------|-----------|
 | llm-frontend-app | ユーザーインターフェース | React | 3000 (内部) → ${FRONTEND_PORT} (外部) |
 | llm-api-backend | APIサーバー | FastAPI | 8000 (内部) → ${API_PORT} (外部) |
-| llm-mlflow-tracking | メトリクス追跡・ダッシュボード | MLflow | 5000 (内部) → 5001 (外部) |
-| 外部Ollama | モデル実行環境 | Ollama | ${OLLAMA_BASE_URL} (外部サービス) |
+| llm-mlflow-tracking | メトリクス追跡・ダッシュボード | MLflow | 5000 (内部) → ${MLFLOW_EXTERNAL_PORT} (外部) |
+| 外部Ollama | モデル実行環境 | Ollama | 外部サービスとして設定 |
 
 すべてのコンポーネントは共通の `llm-eval-network` (Docker Bridge Network) 上で通信し、コンテナ間のシームレスな接続を実現しています。
 
@@ -29,8 +29,7 @@ Reactベースのフロントエンドアプリケーションで、ユーザー
 
 **通信設定:**
 - バックエンドAPI: `VITE_API_BASE_URL` (空の場合は相対パス使用)
-- MLflow直接URL: `VITE_MLFLOW_DIRECT_URL`
-- Ollamaベース: `VITE_OLLAMA_BASE_URL`
+- MLflow直接URL: `VITE_MLFLOW_DIRECT_URL` (MLFLOW_EXTERNAL_URIから設定)
 
 ### 2.2 APIバックエンド (llm-api-backend)
 
@@ -64,17 +63,13 @@ MLflowを使用したメトリクス追跡と実験管理サーバーで、評�
 
 ### 2.4 外部Ollamaサービス
 
-外部サーバーで動作するOllamaサービスで、LLMモデルの実行環境を提供します。  
-（※現在の構成では、Docker Composeファイル内でのOllamaコンテナはコメントアウトされ、外部サービスを使用）
+外部サーバーで動作するOllamaサービスで、LLMモデルの実行環境を提供します。
+（※Docker Composeファイル内でのOllamaコンテナはコメントアウトされており、外部サービスを使用）
 
 **主な特徴:**
 - ローカルLLMモデルのホスティング
 - モデル管理と推論API
 - シンプルなRESTful API
-
-**通信設定:**
-- ベースURL: `OLLAMA_BASE_URL`
-- CORS設定: `OLLAMA_ORIGINS`
 
 ## 3. ネットワークフロー詳細
 
@@ -86,6 +81,9 @@ MLflowを使用したメトリクス追跡と実験管理サーバーで、評�
 2. **ユーザー → バックエンドAPI**:  
    ポート `${API_PORT}` (デフォルト: 8001) を通じて直接APIにアクセス可能（高度ユーザー向け）
 
+3. **ユーザー → MLflowダッシュボード**:  
+   ポート `${MLFLOW_EXTERNAL_PORT}` (デフォルト: 5001) を通じて直接MLflowにアクセス可能（開発/分析者向け）
+
 ### 3.2 内部通信フロー
 
 #### フロントエンド-バックエンド間通信
@@ -93,40 +91,41 @@ MLflowを使用したメトリクス追跡と実験管理サーバーで、評�
 1. **APIリクエスト**:  
    フロントエンドはバックエンドAPIに HTTP リクエストを送信（`/api/v1/` エンドポイント）
 
-2. **MLflowアクセス**:  
-   フロントエンドは `/proxy-mlflow/` パスを通じてバックエンドに接続し、バックエンドはプロキシとして MLflow へリクエストを転送
+2. **MLflowアクセス**:
+   以下の2つの方法が利用可能（直接アクセスが優先されます）：
+   - 直接アクセス: `VITE_MLFLOW_DIRECT_URL` (MLFLOW_EXTERNAL_URI) を使用して MLflow APIエンドポイントに直接接続 `/api/2.0/mlflow/experiments/list` など
+   - プロキシ経由: `/proxy-mlflow/` パスを通じてバックエンドに接続し、バックエンドはプロキシとして MLflow へリクエストを転送
 
-3. **Ollamaアクセス**:  
-   フロントエンドは `/proxy-ollama/` パスを通じてバックエンドに接続し、バックエンドはプロキシとして Ollama へリクエストを転送
+3. **Ollamaアクセス**:
+   フロントエンドはバックエンドの `/api/v1/ollama/` APIエンドポイントを使用してOllamaと通信
+   - バックエンドが内部的にOllamaと通信し、結果をフロントエンドに返す
+   - フロントエンドからの直接アクセスは使用されていない
+   - 注意: `/proxy-ollama/` プロキシ機能は使用されておらず、削除されました (2025/5/13)
 
 #### バックエンド-MLflow間通信
 
 1. **メトリクス保存・取得**:  
-   バックエンドは環境変数 `MLFLOW_HOST` と `MLFLOW_PORT` を使用して MLflow サーバーと通信
+   バックエンドはMLflowサーバーと通信する際、以下の優先順位でベースURLを決定:
 
-2. **フォールバックメカニズム**:  
-   複数の接続先URLを試行する堅牢な設計
    ```
    優先順位:
-   1. 環境変数指定のホスト (デフォルト: mlflow:5000)
-   2. ローカルホスト (同一コンテナ内接続)
-   3. Docker内部ネットワークアドレス
-   4. Bridge ネットワークゲートウェイ
+   1. MLFLOW_HOST_URI (内部接続用URI)
+   2. "http://llm-mlflow-tracking:5000" (Dockerネットワーク内コンテナ名)
+   3. MLFLOW_EXTERNAL_URI (全システム共通の外部アクセスURL)
+   4. "http://localhost:5001" (ローカル開発フォールバック)
+   
+   # 後方互換性
+   5. LLMEVAL_MLFLOW_EXTERNAL_URI (旧環境変数、非推奨)
    ```
+
+2. **フォールバックメカニズム**:  
+   - 最初のURLで接続できない場合、次のURLを試行
+   - すべてのURLで接続失敗した場合、明示的なエラーを返却
 
 #### バックエンド-Ollama間通信
 
 1. **モデル実行リクエスト**:  
-   バックエンドは環境変数 `OLLAMA_BASE_URL` を使用して Ollama サーバーと通信
-
-2. **フォールバックメカニズム**:  
-   MLflow同様、複数の接続先URLを試行
-   ```
-   優先順位:
-   1. 環境変数指定のURL (デフォルト: http://ollama:11434)
-   2. ローカルホスト (同一コンテナ内接続)
-   3. Docker内部ネットワークアドレス
-   ```
+   バックエンドは、設定されたOllama接続情報を使用してOllamaサービスと通信
 
 ### 3.3 プロキシ機能詳細
 
@@ -134,36 +133,41 @@ MLflowを使用したメトリクス追跡と実験管理サーバーで、評�
 
 バックエンドの `/proxy-mlflow/` エンドポイントは、以下の処理を行います：
 
-1. **リクエスト転送**:  
+1. **リクエスト転送**:
    フロントエンドからのリクエストを MLflow サーバーに転送
 
-2. **レスポンス変換**:  
+2. **レスポンス変換**:
    - HTML内のリンクとパス書き換え
    - CSSとJavaScriptのURL修正
    - JSONレスポンス内のパス調整
    - アーティファクトURIの変換
 
-3. **エラー処理**:  
+3. **エラー処理**:
    - 接続エラー時のフォールバック
    - ユーザーフレンドリーなエラーメッセージ
    - タイムアウト処理
 
-4. **静的ファイル対応**:  
+4. **静的ファイル対応**:
    `/proxy-mlflow/static-files/` パスで MLflow の静的アセットを提供
 
-#### Ollamaプロキシ機能
+#### Ollamaプロキシ機能（削除済み）
 
-バックエンドの `/proxy-ollama/` エンドポイントは、以下の処理を行います：
+バックエンドの `/proxy-ollama/` エンドポイントは**2025年5月13日に削除されました**。代わりにフロントエンドはバックエンドの`/api/v1/ollama/`APIエンドポイントを使用します。
 
-1. **リクエスト転送**:  
-   フロントエンドからのリクエストを Ollama サーバーに転送
+#### Ollama APIエンドポイント (実際に使用されている機能)
 
-2. **CORSヘッダー追加**:  
-   クロスオリジン通信のためのヘッダー設定
+バックエンドの `/api/v1/ollama/` エンドポイントは、以下の機能を提供します：
 
-3. **エラー処理**:  
-   - 接続エラー時のフォールバック
-   - 診断情報の提供
+1. **モデル管理API**:
+   - モデルダウンロード開始 (`/api/v1/ollama/download`)
+   - ダウンロード状態確認 (`/api/v1/ollama/download/{id}`)
+   - 全ダウンロード一覧取得 (`/api/v1/ollama/downloads`)
+   - モデル存在確認 (`/api/v1/ollama/check_model`)
+
+2. **安全なアクセス**:
+   - バックエンドがOllamaサーバーとの通信を担当
+   - APIキーやセキュリティを一元管理
+   - フロントエンドに必要な情報のみを提供
 
 ## 4. ボリューム (データ共有)
 
@@ -183,23 +187,21 @@ MLflowを使用したメトリクス追跡と実験管理サーバーで、評�
 ### ポート設定
 - `API_PORT`: バックエンドAPIの外部公開ポート (デフォルト: 8001)
 - `FRONTEND_PORT`: フロントエンドの外部公開ポート (デフォルト: 4173)
-- `MLFLOW_EXTERNAL_PORT`: MLflowの外部公開ポート (デフォルト: 5000)
-- `OLLAMA_PORT`: Ollamaの外部公開ポート (デフォルト: 11434)
+- `MLFLOW_EXTERNAL_PORT`: MLflowの外部公開ポート (デフォルト: 5001)
 
 ### ホスト設定
 - `MLFLOW_HOST`: MLflowサーバーのホスト名 (デフォルト: llm-mlflow-tracking)
-- `MLFLOW_EXTERNAL_HOST`: 外部からアクセス可能なMLflowホスト
-- `OLLAMA_EXTERNAL_HOST`: 外部からアクセス可能なOllamaホスト
+- `MLFLOW_PORT`: MLflowサーバーのポート (デフォルト: 5000)
+- `MLFLOW_EXTERNAL_HOST`: 外部からアクセス可能なMLflowホスト (デフォルト: localhost)
 
 ### URL設定
 - `VITE_API_BASE_URL`: フロントエンドが使用するAPIベースURL
-- `VITE_OLLAMA_BASE_URL`: フロントエンドが使用するOllamaベースURL
-- `OLLAMA_BASE_URL`: バックエンドが使用するOllamaベースURL
-- `VITE_MLFLOW_DIRECT_URL`: フロントエンドからMLflowへの直接アクセスURL
+- `MLFLOW_EXTERNAL_URI`: 外部アクセス用の完全なMLflow URI (http://${MLFLOW_EXTERNAL_HOST}:${MLFLOW_EXTERNAL_PORT})
+- `VITE_MLFLOW_DIRECT_URL`: フロントエンドからMLflowへの直接アクセスURL (${MLFLOW_EXTERNAL_URI}から設定)
+- `MLFLOW_HOST_URI`: バックエンドがMLflowに接続するための内部URI (http://${MLFLOW_HOST}:${MLFLOW_PORT})
 
 ### CORS設定
 - `CORS_ORIGINS`: APIバックエンドのCORS許可オリジン (デフォルト: *)
-- `OLLAMA_ORIGINS`: OllamaのCORS許可オリジン (デフォルト: *)
 
 ## 6. 障害対策と耐性
 
@@ -214,8 +216,8 @@ MLflowを使用したメトリクス追跡と実験管理サーバーで、評�
 3. **エラーハンドリング**:  
    詳細なエラー情報の提供と適切なステータスコードの返却
 
-4. **診断エンドポイント**:  
-   `/debug-mlflow` などの診断用エンドポイントによる接続状態の確認機能
+4. **標準API診断**:
+   MLflowの標準APIエンドポイント（`/api/2.0/mlflow/experiments/list`）を使用した接続状態確認機能
 
 ## 7. セキュリティ考慮事項
 
@@ -249,14 +251,14 @@ MLflowを使用したメトリクス追跡と実験管理サーバーで、評�
    - ネットワークポートが正しくマッピングされているか確認
 
 2. **バックエンド-MLflow間接続エラー**:
-   - 環境変数 `MLFLOW_HOST` と `MLFLOW_PORT` が正しく設定されているか確認
+   - 環境変数 `MLFLOW_HOST_URI`、または `MLFLOW_HOST` と `MLFLOW_PORT` が正しく設定されているか確認
    - MLflowサービスが起動しているか確認
-   - `/debug-mlflow` エンドポイントでMLflow接続状態を診断
+   - MLflowの標準APIエンドポイント `/api/2.0/mlflow/experiments/list` に直接アクセスして接続状態を診断
 
-3. **バックエンド-Ollama間接続エラー**:
-   - 環境変数 `OLLAMA_BASE_URL` が正しく設定されているか確認
-   - 外部Ollamaサービスが実行中か確認
-   - Ollamaサービスが適切なポートでリッスンしているか確認
+3. **MLflow直接アクセスエラー**:
+   - 環境変数 `MLFLOW_EXTERNAL_URI` が正しく設定されているか確認
+   - `MLFLOW_EXTERNAL_HOST` と `MLFLOW_EXTERNAL_PORT` の組み合わせが有効か確認
+   - MLflowポート公開設定がdocker-compose.ymlで正しく行われているか確認
 
 ### プロキシ問題
 
@@ -265,13 +267,17 @@ MLflowを使用したメトリクス追跡と実験管理サーバーで、評�
    - ネットワーク構成がコンテナ間通信を許可しているか確認
    - MLflowのログで詳細エラーを確認
 
-2. **Ollamaプロキシエラー**:
+2. **Ollama API接続エラー**:
    - Ollamaサービスが起動しているか確認
-   - CORS設定が適切か確認
+   - バックエンドログで接続エラーを確認
+   - バックエンド環境変数 `OLLAMA_BASE_URL` が正しく設定されているか確認
    - API応答時間が長い場合はタイムアウト設定を調整
+   - 注意: 旧 `/proxy-ollama/` エンドポイントは削除されています
 
 ## 9. まとめ
 
-LLM評価プラットフォームのネットワーク構造は、フロントエンド、バックエンド、MLflow、Ollamaの各コンポーネントが連携し、ユーザーに統合されたエクスペリエンスを提供します。プロキシ機能を活用した柔軟なアーキテクチャと、フォールバックメカニズムによる障害耐性を備えており、環境変数による柔軟な設定が可能です。
+LLM評価プラットフォームのネットワーク構造は、フロントエンド、バックエンド、MLflowの各コンポーネントが連携し、ユーザーに統合されたエクスペリエンスを提供します。環境変数を活用した柔軟な設定と、フォールバックメカニズムによる障害耐性を備えています。
+
+特に注目すべき点として、環境変数の統一と簡素化により、設定の一貫性が向上し、管理が容易になっています。ブラウザからMLflowに直接アクセスする場合は `MLFLOW_EXTERNAL_URI` が使用され、バックエンドからMLflowに接続する場合は優先順位に従って最適な接続方法が選択されます。
 
 このドキュメントで説明したネットワーク構造を理解することで、プラットフォームの効率的な運用とカスタマイズが可能になります。
