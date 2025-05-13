@@ -21,6 +21,7 @@ import { useTheme } from '@mui/material/styles';
 const Leaderboard: React.FC = () => {
   const theme = useTheme();
   const [loading, setLoading] = useState(true);
+  const [iframeLoading, setIframeLoading] = useState(true);
   const [mlflowDirectAccessOk, setMlflowDirectAccessOk] = useState<boolean | null>(null);
   const [mlflowProxyAccessOk, setMlflowProxyAccessOk] = useState<boolean | null>(null);
   const [mlflowStatus, setMlflowStatus] = useState<any>(null);
@@ -195,6 +196,21 @@ const Leaderboard: React.FC = () => {
     }
   };
 
+  // iframe読み込みエラーを処理する関数
+  const handleIframeError = (e: React.SyntheticEvent<HTMLIFrameElement>) => {
+    console.error('MLflow iframe 読み込みエラー', e);
+    setIframeLoading(false);
+    setErrorMessage('MLflowダッシュボードの読み込みに失敗しました。別タブで開くボタンをお試しください。');
+    setMessageType('error');
+    setShowError(true);
+  };
+
+  // iframe読み込み完了を処理する関数
+  const handleIframeLoad = (e: React.SyntheticEvent<HTMLIFrameElement>) => {
+    console.log('MLflow iframe 読み込み完了');
+    setIframeLoading(false);
+  };
+
   // コンポーネントマウント時に接続テスト実行
   useEffect(() => {
     testMlflowConnection();
@@ -273,25 +289,50 @@ const Leaderboard: React.FC = () => {
         </Box>
         
         {/* MLflowダッシュボードのiframe埋め込み */}
-        <Box sx={{ 
-          flex: 1, 
-          position: 'relative', 
+        <Box sx={{
+          flex: 1,
+          position: 'relative',
           display: 'flex',
           overflow: 'hidden',
           borderTop: '1px solid #e0e0e0'
         }}>
           {mlflowDirectAccessOk === true ? (
-            <iframe
-              src={getMlflowEndpoints().directUrl}
-              title="MLflow Dashboard"
-              style={{
-                width: '100%',
-                height: '100%',
-                border: 'none',
-                flexGrow: 1
-              }}
-              sandbox="allow-same-origin allow-scripts allow-forms"
-            />
+            <Box sx={{ position: 'relative', width: '100%', height: '100%' }}>
+              {iframeLoading && (
+                <Box sx={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  bgcolor: 'rgba(255, 255, 255, 0.9)',
+                  zIndex: 5
+                }}>
+                  <CircularProgress size={40} />
+                  <Typography variant="body2" sx={{ mt: 2 }}>
+                    MLflowダッシュボードを読み込み中...
+                  </Typography>
+                </Box>
+              )}
+              <iframe
+                src={getMlflowEndpoints().directUrl}
+                title="MLflow Dashboard"
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  border: 'none',
+                  flexGrow: 1
+                }}
+                referrerPolicy="origin"
+                sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation allow-storage-access-by-user-activation"
+                onError={handleIframeError}
+                onLoad={handleIframeLoad}
+              />
+            </Box>
           ) : (
             <Box sx={{ 
               p: 4, 
