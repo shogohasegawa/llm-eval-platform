@@ -296,7 +296,7 @@ const Leaderboard: React.FC = () => {
           overflow: 'hidden',
           borderTop: '1px solid #e0e0e0'
         }}>
-          {mlflowDirectAccessOk === true ? (
+          {(mlflowDirectAccessOk === true || mlflowProxyAccessOk === true) ? (
             <Box sx={{ position: 'relative', width: '100%', height: '100%' }}>
               {iframeLoading && (
                 <Box sx={{
@@ -319,7 +319,7 @@ const Leaderboard: React.FC = () => {
                 </Box>
               )}
               <iframe
-                src={getMlflowEndpoints().directUrl}
+                src={mlflowDirectAccessOk ? getMlflowEndpoints().directUrl : getMlflowEndpoints().proxyUrl}
                 title="MLflow Dashboard"
                 style={{
                   width: '100%',
