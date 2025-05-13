@@ -17,9 +17,16 @@ export const datasetsApi = {
     const params = type ? { type } : undefined;
     const response = await apiClient.get(`/api/v1/datasets/${name}`, { params });
 
+    // メタデータに加えてデータセットレベルの属性（instruction, metrics, output_length）を引き継ぐ
     return {
       ...response.metadata,
+      // 明示的にメタデータから各属性を抽出
+      instruction: response.metadata?.instruction,
+      metrics: response.metadata?.metrics,
+      output_length: response.metadata?.output_length,
+      // 配列の場合の安全な処理
       items: response.items || [],
+      // 表示設定も引き継ぐ
       display_config: response.display_config,
     };
   },
@@ -41,9 +48,16 @@ export const datasetsApi = {
       },
     });
 
+    // メタデータに加えてデータセットレベルの属性（instruction, metrics, output_length）を引き継ぐ
     return {
       ...response.metadata,
+      // 明示的にメタデータから各属性を抽出
+      instruction: response.metadata?.instruction,
+      metrics: response.metadata?.metrics,
+      output_length: response.metadata?.output_length,
+      // 配列の場合の安全な処理
       items: response.items || [],
+      // 表示設定も引き継ぐ
       display_config: response.display_config,
     };
   }
