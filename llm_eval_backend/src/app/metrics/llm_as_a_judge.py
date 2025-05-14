@@ -1,6 +1,9 @@
-from typing import Dict, Any, Optional
+"""
+LLMを使用して回答品質の評価を行うメトリクスモジュール
+"""
+
+from typing import Dict, Any, Optional, Union, List
 from app.metrics.base import BaseMetric, register_metric, ParamDef
-from typing import Union, List
 from litellm import completion
 import re
 import logging
@@ -8,13 +11,27 @@ from app.utils.db.providers import get_api_key_by_provider_name
 
 logger = logging.getLogger(__name__)
 
-# マルチターン一般タスク用のシングル評価プロンプト
-MULTI_TURN_DEFAULT_SYSTEM_PROMPT = """Please act as an impartial judge and evaluate the quality of the response provided by an AI assistant to the user question displayed below. Your evaluation should consider factors such as the helpfulness, relevance, accuracy, depth, creativity, and level of detail of the response. You evaluation should focus on the assistant's answer to the second user question. Begin your evaluation by providing a short explanation. Be as objective as possible. The expected language is Japanese. Responses in languages other than Japanese will incur score deductions unless specifically required. Failure to use Japanese at all will result in the lowest evaluation. However, using Japanese is not mandatory when providing only Python scripts or calculation results, where Japanese is not essential. Additionally, your explanation of judgement should be in Japanese. After providing your explanation, you must rate the response on a scale of 1 to 10 by strictly following this format: "[[rating]]", for example: "Rating: [[5]]".
-"""
+# システムプロンプト（カテゴリ別）
+SYSTEM_PROMPTS = {
+    # 一般的なタスク用のシングル評価プロンプト
+    "default": """Please act as an impartial judge and evaluate the quality of the response provided by an AI assistant to the user question displayed below. Your evaluation should consider factors such as the helpfulness, relevance, accuracy, depth, creativity, and level of detail of the response. Begin your evaluation by providing a short explanation. Be as objective as possible. The expected language is Japanese. Responses in languages other than Japanese will incur score deductions unless specifically required. Failure to use Japanese at all will result in the lowest evaluation. However, using Japanese is not mandatory when providing only Python scripts or calculation results, where Japanese is not essential. Additionally, your explanation of judgement should be in Japanese. After providing your explanation, you must rate the response on a scale of 1 to 10 by strictly following this format: "[[rating]]", for example: "Rating: [[5]]".""",
+    
+    # 数学・推論タスク用のシングル評価プロンプト
+    "math": """Please act as an impartial judge and evaluate the quality of the response provided by an AI assistant to the math or reasoning question displayed below. Your evaluation should consider the correctness of the solution, the clarity of the explanation, and the appropriateness of the approach. Identify any errors in calculation, methodology, or reasoning. If the response contains a correct solution but lacks clarity, it should receive a lower rating than a correct, well-explained solution. Begin your evaluation by providing a short explanation and note any errors. The expected language is Japanese, unless specifically required for the calculation. After providing your explanation, you must rate the response on a scale of 1 to 10 by strictly following this format: "[[rating]]", for example: "Rating: [[5]]".""",
+    
+    # コーディングタスク用のシングル評価プロンプト
+    "coding": """Please act as an impartial judge and evaluate the quality of the coding response provided by an AI assistant to the programming question displayed below. Your evaluation should consider the correctness, efficiency, clarity, and style of the code, as well as the quality of the explanation. Identify any bugs, edge cases not handled, inefficient implementations, or poor coding practices. Begin your evaluation by providing a short explanation and note any issues with the code or explanation. The expected language is Japanese, but English variable names and code comments are acceptable. After providing your explanation, you must rate the response on a scale of 1 to 10 by strictly following this format: "[[rating]]", for example: "Rating: [[5]]"."""
+}
+
+# マルチターンタスク用のシステムプロンプト
+MULTI_TURN_DEFAULT_SYSTEM_PROMPT = """Please act as an impartial judge and evaluate the quality of the response provided by an AI assistant to the user question displayed below. Your evaluation should consider factors such as the helpfulness, relevance, accuracy, depth, creativity, and level of detail of the response. You evaluation should focus on the assistant's answer to the second user question. Begin your evaluation by providing a short explanation. Be as objective as possible. The expected language is Japanese. Responses in languages other than Japanese will incur score deductions unless specifically required. Failure to use Japanese at all will result in the lowest evaluation. However, using Japanese is not mandatory when providing only Python scripts or calculation results, where Japanese is not essential. Additionally, your explanation of judgement should be in Japanese. After providing your explanation, you must rate the response on a scale of 1 to 10 by strictly following this format: "[[rating]]", for example: "Rating: [[5]]"."""
 
 # 評価スコアを抽出するための正規表現パターン
 RATING_PATTERN = re.compile(r"\[\[(\d+(?:\.\d+)?)\]\]")
 RATING_PATTERN_BACKUP = re.compile(r"\[(\d+(?:\.\d+)?)\]")
+
+# MT-Benchで必要な参照回答が必要なカテゴリー
+NEED_REF_CATS = ["math", "reasoning", "coding", "stem"]
 
 def build_multi_turn_prompt_template(turns: int, with_reference: bool = False) -> str:
     """
@@ -84,7 +101,7 @@ class LlmJudge(BaseMetric):
     def __init__(self, parameters: Optional[Dict[str, Any]] = None):
         """
         初期化メソッド
-
+        
         Args:
             parameters (Optional[Dict[str, Any]]): 評価指標のパラメータ
         """
@@ -96,7 +113,7 @@ class LlmJudge(BaseMetric):
     def get_parameter_definitions(cls) -> ParamDef:
         """
         この評価指標がサポートするパラメータ定義を返します。
-
+        
         Returns:
             ParamDef: パラメータ名とメタ情報の辞書
         """
@@ -129,6 +146,7 @@ class LlmJudge(BaseMetric):
                 "type": "string",
                 "description": "タスクのカテゴリ（math, reasoning, coding, writing, roleplay, extraction, stemなど）",
                 "default": "general",
+                "enum": ["general", "math", "reasoning", "coding", "writing", "roleplay", "extraction", "stem", "humanities"],
                 "required": False
             },
             "multi_turn": {
@@ -137,6 +155,12 @@ class LlmJudge(BaseMetric):
                 "default": True,
                 "required": False
             },
+            "turn_to_evaluate": {
+                "type": "number",
+                "description": "評価する特定のターン番号（1から始まる）。指定しない場合は最終ターンを評価します。",
+                "default": 0,
+                "required": False
+            }
         }
 
     def _extract_score(self, judgment: str) -> float:
@@ -177,6 +201,29 @@ class LlmJudge(BaseMetric):
             logger.warning(f"スコアの解析に失敗しました: {match.group(0)}")
             return 0.0
 
+    def _select_system_prompt(self, category: str) -> str:
+        """
+        カテゴリに基づいて適切なシステムプロンプトを選択します。
+
+        Args:
+            category (str): タスクカテゴリ
+
+        Returns:
+            str: 選択されたシステムプロンプト
+        """
+        # カテゴリを小文字化
+        category = category.lower()
+        
+        # 数学/推論関連のカテゴリ
+        if category in ["math", "reasoning", "stem"]:
+            return SYSTEM_PROMPTS["math"]
+        # コーディング関連のカテゴリ
+        elif category in ["coding"]:
+            return SYSTEM_PROMPTS["coding"]
+        # デフォルト
+        else:
+            return SYSTEM_PROMPTS["default"]
+
     def calculate(self, hypothesis: Union[str, List[str]], reference: Union[str, List[str]], **kwargs) -> float:
         """
         LLMを呼び出して応答を評価し、スコアを0〜1に正規化して返します。
@@ -185,6 +232,7 @@ class LlmJudge(BaseMetric):
             hypothesis (str | List[str]): AIの応答文または応答文のリスト
             reference (str | List[str]): 正解文または正解文のリスト
             question (str | List[str]): ユーザーからの質問文またはそのリスト
+            category (str, optional): タスクカテゴリ
 
         Returns:
             float: 正規化後評価スコア（0〜1）
@@ -206,6 +254,9 @@ class LlmJudge(BaseMetric):
         if question is None:
             raise ValueError("評価には 'question' 引数が必要です。")
 
+        # カテゴリ情報の取得（パラメータかkwargsから）
+        category = kwargs.get("category", self.parameters.get("task_category", "general"))
+        
         # hypothesisとreferenceがstr型の場合はリストに変換
         if isinstance(hypothesis, str):
             hypothesis = [hypothesis]
@@ -218,8 +269,21 @@ class LlmJudge(BaseMetric):
         if len(hypothesis) != len(reference):
             raise ValueError("hypothesisとreferenceのリストは同じ長さでなければなりません。")
 
-        # 適切なプロンプトを選択
-        system_prompt = MULTI_TURN_DEFAULT_SYSTEM_PROMPT
+        # 評価するターン番号を決定（0ならば最終ターン）
+        turn_to_evaluate = int(self.parameters.get("turn_to_evaluate", 0))
+        if turn_to_evaluate <= 0:
+            turn_to_evaluate = len(hypothesis)  # 最終ターン
+        elif turn_to_evaluate > len(hypothesis):
+            turn_to_evaluate = len(hypothesis)  # 範囲外なら最終ターン
+        
+        # 多数のターンがあるが単一ターンだけを評価したい場合の処理
+        is_multi_turn = self.parameters.get("multi_turn", True) and len(hypothesis) > 1
+        
+        # 適切なシステムプロンプトを選択
+        if is_multi_turn:
+            system_prompt = MULTI_TURN_DEFAULT_SYSTEM_PROMPT
+        else:
+            system_prompt = self._select_system_prompt(category)
         
         # メッセージの準備
         messages = [
@@ -228,10 +292,14 @@ class LlmJudge(BaseMetric):
 
         # promptの生成
         # もしreferenceの要素0が空であれば、referenceは使用しない
-        if reference[0] == "":
+        if reference[0] == "" or all(ref == "" for ref in reference):
             with_reference = False
         else:
             with_reference = True
+            # 参照回答が必要なカテゴリかどうかを確認
+            if not any(cat in category.lower() for cat in NEED_REF_CATS):
+                with_reference = False  # 必要ないカテゴリでは参照回答を使わない
+                
         prompt_template = build_multi_turn_prompt_template(len(hypothesis), with_reference=with_reference)
 
         # プレースホルダに埋め込む辞書を作成
@@ -239,8 +307,7 @@ class LlmJudge(BaseMetric):
         for i in range(len(hypothesis)):
             format_dict[f"question_{i+1}"] = question[i]
             format_dict[f"hypothesis_{i+1}"] = hypothesis[i]
-            format_dict[f"reference_{i+1}"] = reference[i]
-
+            format_dict[f"reference_{i+1}"] = reference[i] if i < len(reference) else ""
 
         # テンプレートに値を埋め込む
         prompt = prompt_template.format(**format_dict)
@@ -254,41 +321,33 @@ class LlmJudge(BaseMetric):
         api_key = self.parameters.get("api_key", "")   
         max_tokens = self.parameters.get("max_tokens", 2048)
 
-        api_key = get_api_key_by_provider_name(judge_provider)
+        # APIキーの取得
+        if not api_key:
+            api_key = get_api_key_by_provider_name(judge_provider)
+            
+        logger.info(f"LLM評価を実行: モデル={judge_model}, プロバイダ={judge_provider}, カテゴリ={category}, マルチターン={is_multi_turn}")
+        logger.info(f"評価対象ターン: {turn_to_evaluate}/{len(hypothesis)}")
+
         # 推論の実行
-        completion_response = completion(
-            model=judge_model,
-            messages=messages,
-            api_key=api_key,
-            max_tokens=max_tokens
-        )
+        try:
+            completion_response = completion(
+                model=judge_model,
+                messages=messages,
+                api_key=api_key,
+                max_tokens=max_tokens
+            )
 
-        print(completion_response)
+            # レスポンス本文を取り出す
+            response_text = completion_response.choices[0].message.content
+            logger.info(f"評価結果: {response_text[:100]}...")
 
-        # レスポンス本文を取り出す
-        response_text = completion_response.choices[0].message.content
-
-        # スコアを抽出
-        score = self._extract_score(response_text)        
-        score = score / 10.0
-        return score
-
-# if __name__ == "__main__":
-#     # テスト用の仮説と参照
-#     hypothesis = ["今日は日曜日です", "雨が降るでしょう"]
-#     reference = [
-#         "もちろんです。以下は、指定されたディレクトリ内の全てのテキストファイルを読み込み、出現回数が最も多い上位5単語を返すPythonプログラムの例です。\n\n```python\nimport os\nimport re\nfrom collections import Counter\n\ndef read_text_files(directory):\n    text = \"\"\n    for filename in os.listdir(directory):\n        if filename.endswith(\".txt\"):\n            with open(os.path.join(directory, filename), 'r', encoding='utf-8') as file:\n                text += file.read() + \" \"\n    return text\n\ndef get_top_words(text, top_n=5):\n    # 単語を抽出し、すべて小文字に変換\n    words = re.findall(r'\\b\\w+\\b', text.lower())\n    # 単語の出現回数をカウント\n    word_counts = Counter(words)\n    # 出現回数が多い上位の単語を取得\n    top_words = word_counts.most_common(top_n)\n    return top_words\n\ndef main(directory):\n    text = read_text_files(directory)\n    top_words = get_top_words(text)\n    for word, count in top_words:\n        print(f\"{word}: {count}\")\n\n# 使用例\ndirectory_path = \"your_directory_path_here\"  # ここにディレクトリのパスを指定してください\nmain(directory_path)\n```\n\n### プログラムの説明\n1. **`read_text_files` 関数**:\n    - 指定されたディレクトリ内の全てのテキストファイルを読み込み、1つの文字列として結合します。\n2. **`get_top_words` 関数**:\n    - テキストから単語を抽出し、小文字に変換します。\n    - 単語の出現回数をカウントし、上位 `top_n` 個の単語を返します。\n3. **`main` 関数**:\n    - ディレクトリパスを受け取り、テキストを読み込み、上位の単語を表示します。\n\n### 使用方法\n1. `directory_path` 変数に対象のディレクトリのパスを指定します。\n2. プログラムを実行すると、指定されたディレクトリ内の全てのテキストファイルを読み込み、出現回数が最も多い上位5単語が表示されます。\n\nこのプログラムは、基本的なテキスト処理とファイル操作を行うための良い出発点となります。必要に応じて、さらに機能を追加したり、改善したりすることができます。", 
-#         "はい、Pythonで並列処理を行うことは可能です。並列処理を行うための方法として、`concurrent.futures` モジュールを使用するのが一般的です。このモジュールを使うことで、複数のファイルを並列に読み込むことができます。\n\n以下は、先ほどのプログラムを並列化したバージョンです。\n\n```python\nimport os\nimport re\nfrom collections import Counter\nfrom concurrent.futures import ThreadPoolExecutor\n\ndef read_text_file(filepath):\n    with open(filepath, 'r', encoding='utf-8') as file:\n        return file.read()\n\ndef read_text_files_parallel(directory):\n    text = \"\"\n    with ThreadPoolExecutor() as executor:\n        futures = []\n        for filename in os.listdir(directory):\n            if filename.endswith(\".txt\"):\n                filepath = os.path.join(directory, filename)\n                futures.append(executor.submit(read_text_file, filepath))\n        \n        for future in futures:\n            text += future.result() + \" \"\n    return text\n\ndef get_top_words(text, top_n=5):\n    words = re.findall(r'\\b\\w+\\b', text.lower())\n    word_counts = Counter(words)\n    top_words = word_counts.most_common(top_n)\n    return top_words\n\ndef main(directory):\n    text = read_text_files_parallel(directory)\n    top_words = get_top_words(text)\n    for word, count in top_words:\n        print(f\"{word}: {count}\")\n\n# 使用例\ndirectory_path = \"your_directory_path_here\"  # ここにディレクトリのパスを指定してください\nmain(directory_path)\n```\n\n### プログラムの説明\n1. **`read_text_file` 関数**:\n    - 単一のテキストファイルを読み込み、その内容を返します。\n2. **`read_text_files_parallel` 関数**:\n    - `ThreadPoolExecutor` を使用して、ディレクトリ内の全てのテキストファイルを並列に読み込みます。\n    - 各ファイルの読み込みタスクをスレッドプールに送信し、結果を結合します。\n3. **`get_top_words` 関数**:\n    - テキストから単語を抽出し、小文字に変換します。\n    - 単語の出現回数をカウントし、上位 `top_n` 個の単語を返します。\n4. **`main` 関数**:\n    - ディレクトリパスを受け取り、テキストを並列に読み込み、上位の単語を表示します。\n\n### 使用方法\n1. `directory_path` 変数に対象のディレクトリのパスを指定します。\n2. プログラムを実行すると、指定されたディレクトリ内の全てのテキストファイルを並列に読み込み、出現回数が最も多い上位5単語が表示されます。\n\nこのプログラムは、`ThreadPoolExecutor` を使用してファイルの読み込みを並列化することで、処理速度を向上させることができます。ファイル数が多い場合や、各ファイルのサイズが大きい場合に特に有効です。",
-#         ]
-#     question = [
-#         "ディレクトリ内の全てのテキストファイルを読み込み、出現回数が最も多い上位5単語を返すPythonプログラムを開発してください。", 
-#         "それを並列化（parallelize）することは可能ですか？",
-#         ]
-
-#     # LLMJudgeのインスタンスを作成
-#     llm_judge = LlmJudge()
-
-#     # 評価を実行
-#     score = llm_judge.calculate(hypothesis, reference, question=question)
-#     print(f"評価スコア: {score:.2f}")
-
+            # スコアを抽出
+            score = self._extract_score(response_text)        
+            score = score / 10.0
+            
+            logger.info(f"抽出スコア: {score:.3f} (正規化後)")
+            return score
+            
+        except Exception as e:
+            logger.error(f"LLM評価実行中にエラーが発生しました: {e}")
+            return 0.0
